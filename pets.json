@@ -1,0 +1,76 @@
+{
+  "pets": [
+    {
+      "name": "Köpek",
+      "emoji": "🐶",
+      "rarity": "common",
+      "price": 100
+    },
+    {
+      "name": "Kedi",
+      "emoji": "🐱",
+      "rarity": "rare",
+      "price": 150
+    },
+    {
+      "name": "Tavşan",
+      "emoji": "🐰",
+      "rarity": "common",
+      "price": 80
+    },
+    {
+      "name": "Kuş",
+      "emoji": "🐦",
+      "rarity": "common",
+      "price": 90
+    },
+    {
+      "name": "Kaplumbağa",
+      "emoji": "🐢",
+      "rarity": "common",
+      "price": 120
+    },
+    {
+      "name": "Yılan",
+      "emoji": "🐍",
+      "rarity": "common",
+      "price": 110
+    },
+    {
+      "name": "Balık",
+      "emoji": "🐠",
+      "rarity": "rare",
+      "price": 180
+    },
+    {
+      "name": "Koala",
+      "emoji": "🐨",
+      "rarity": "common",  // Nadirlik güncellendi: common
+      "price": 300
+    },
+    {
+      "name": "Panda",
+      "emoji": "🐼",
+      "rarity": "common",  // Nadirlik güncellendi: common
+      "price": 400
+    },
+    {
+      "name": "Kanguru",
+      "emoji": "🦘",
+      "rarity": "rare",
+      "price": 200
+    },
+    {
+      "name": "Aslan",
+      "emoji": "🦁",
+      "rarity": "premium",
+      "price": 350
+    },
+    {
+      "name": "Kaplan",
+      "emoji": "🐅",
+      "rarity": "premium",
+      "price": 380
+    }
+  ]
+}

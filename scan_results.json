@@ -1,0 +1,9 @@
+{
+  "channels": [
+    "channels.cache.get('1192951046012670204')",
+    "channels.cache.get(\"1192951046012670204\")"
+  ],
+  "links": [
+    "https://dsc.gg/risebunny"
+  ]
+}
