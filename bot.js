@@ -345,8 +345,11 @@ app.post("/api/coupon/redeem", _botAuth, express.json(), async (req, res) => {
     const id = String(req.body?.userId || "").replace(/\D/g, "").slice(0, 20);
     const kod = String(req.body?.kod || "").toUpperCase().trim();
     if (!id || !kod) return res.status(400).json({ error: "eksik alan" });
-    const kupon = db.fetch(`kupon_${kod}`);
-    if (!kupon) return res.status(404).json({ error: "Geçersiz kupon kodu." });
+    let kupon = db.fetch(`kupon_${kod}`);
+    // Eski format (saf sayı) geri uyumluluk
+    if (typeof kupon === "number") kupon = { kod, tip: "para", miktar: kupon, bitis: 0, yer: "ikisi", limit: 0, calismalar: 0 };
+    if (!kupon || typeof kupon !== "object") return res.status(404).json({ error: "Geçersiz kupon kodu." });
+    if (db.fetch(`usedCoupons.${kod}`)) return res.status(409).json({ error: "Bu kupon daha önce kullanılmış." });
     if (kupon.yer === "bot") return res.status(403).json({ error: "Bu kupon sadece botta kullanılabilir." });
     if (kupon.bitis && Date.now() > kupon.bitis) return res.status(410).json({ error: "Bu kuponun süresi dolmuş." });
     if (kupon.limit && (kupon.calismalar || 0) >= kupon.limit) return res.status(410).json({ error: "Bu kupon kullanım limitine ulaşmış." });
