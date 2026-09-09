@@ -15,28 +15,18 @@ function kuponSil(kod) {
   try { db.delete(`kupon_${kod}`); } catch {}
   try { db.set("kuponListesi", kuponlar().filter(k => k.kod !== kod)); } catch {}
 }
-
-/* Kupon ödülünü işler (bot içi kullanım). Site tarafı bot.js /api/coupon/redeem üzerinden aynı fonksiyon mantığıyla çalışır. */
-function kuponOdulVer(userId, kupon) {
-  if (kupon.tip === "premium") {
-    const gun = Number(kupon.premiumGun) || 30;
-    addPremium(userId, gun * 24 * 60 * 60 * 1000);
-    return { ok: true, mesaj: `💎 **${gun} gün** premium aktif edildi!` };
-  }
-  if (kupon.tip === "pet") {
-    const pets = db.get(`pets_${userId}`) || [];
-    const pet = { name: kupon.petAd || "Tavşan", emoji: kupon.petEmoji || "🐰", rarity: "coupon", price: Number(kupon.petFiyat) || 50000 };
-    pets.push(pet);
-    db.set(`pets_${userId}`, pets);
-    return { ok: true, mesaj: `${pet.emoji} **${pet.name}** petin hesabına eklendi!` };
-  }
-  const miktar = Number(kupon.miktar) || 0;
-  if (miktar > 0) {
-    db.add(`para_${userId}`, miktar);
-    return { ok: true, mesaj: `💸 **${miktar.toLocaleString()}** RiseBunny Cash hesabına yüklendi!` };
-  }
-  return { ok: false, mesaj: "Geçersiz kupon ödülü." };
-}
+const SURELER = [
+  { id: "1h",  ms: 3600000,        tr: "1 Saat",   en: "1 Hour" },
+  { id: "6h",  ms: 21600000,       tr: "6 Saat",   en: "6 Hours" },
+  { id: "1g",  ms: 86400000,       tr: "1 Gün",    en: "1 Day" },
+  { id: "1h",  ms: 604800000,      tr: "1 Hafta",  en: "1 Week" },
+  { id: "2h",  ms: 1209600000,     tr: "2 Hafta",  en: "2 Weeks" },
+  { id: "1a",  ms: 2592000000,    tr: "1 Ay",     en: "1 Month" },
+  { id: "3a",  ms: 7776000000,    tr: "3 Ay",     en: "3 Months" },
+  { id: "6a",  ms: 15552000000,   tr: "6 Ay",     en: "6 Months" },
+  { id: "1y",  ms: 31536000000,   tr: "1 Yıl",    en: "1 Year" },
+  { id: "suresiz", ms: 0,          tr: "♾️ Süresiz", en: "♾️ Permanent" }
+];
 
 exports.run = async (client, message) => {
   const lang = getLangSync(message.author.id);
@@ -46,16 +36,13 @@ exports.run = async (client, message) => {
 
   const e = new EmbedBuilder().setColor("Gold").setTitle(EN ? "🎟️ Coupon Management" : "🎟️ Kupon Yönetimi")
     .setDescription(EN
-      ? "Create timed or permanent coupons. Rewards: cash, pet or premium. Choose where they can be redeemed: **Bot**, **Website** (Discord login required) or **Both**."
-      : "Süreli veya süresiz kuponlar oluştur. Ödüller: para, pet veya premium. Kullanım yerini seç: **Bot**, **Site** (Discord girişi şart) veya **İkisi de**.")
-    .addFields(
-      { name: EN ? "Active coupons" : "Aktif kuponlar", value: kuponlar().slice(0, 10).map(k => {
-          const kalan = k.bitis ? Math.max(0, Math.ceil((k.bitis - Date.now()) / 3600000)) + "h" : (EN ? "∞" : "∞");
-          const nerede = k.yer === "bot" ? "🤖" : k.yer === "site" ? "🌐" : "🤖+🌐";
-          return `\`${k.kod}\` ${nerede} ${k.tip === "premium" ? "💎" : k.tip === "pet" ? "🐾" : "💸"} ${k.calismalar}/${k.limit || "∞"} | ${kalan}`;
-        }).join("\n") || (EN ? "None yet." : "Henüz yok.") }
-    )
-    .setFooter({ text: EN ? "Buttons below • 3 minute panel" : "Aşağıdaki butonlar • 3 dk panel" });
+      ? "Create coupons with **cash**, **pet** or **premium** rewards. Fully button-driven — pick duration, redeem location and usage limit."
+      : "**Para**, **pet** veya **premium** ödüllü kuponlar oluştur. Tamamen butonlu — süre, kullanım yeri ve limiti seç.")
+    .addFields({ name: EN ? "Active coupons" : "Aktif kuponlar", value: kuponlar().slice(0, 10).map(k => {
+        const s = k.bitis ? Math.max(0, Math.ceil((k.bitis - Date.now()) / 3600000)) + "h" : "♾️";
+        const nerede = k.yer === "bot" ? "🤖" : k.yer === "site" ? "🌐" : "🤖+🌐";
+        return `\`${k.kod}\` ${nerede} ${k.tip === "premium" ? "💎" : k.tip === "pet" ? "🐾" : "💸"} ${k.calismalar || 0}/${k.limit || "∞"} | ${s}`;
+      }).join("\n") || (EN ? "None yet." : "Henüz yok.") });
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId("kupon_yeni_para").setLabel(EN ? "💸 Cash Coupon" : "💸 Para Kuponu").setStyle(ButtonStyle.Success),
@@ -65,7 +52,7 @@ exports.run = async (client, message) => {
   );
 
   const panel = await message.channel.send({ embeds: [e], components: [row] });
-  const col = panel.createMessageComponentCollector({ filter: (i) => i.user.id === message.author.id, time: 180000 });
+  const col = panel.createMessageComponentCollector({ filter: (i) => i.user.id === message.author.id, time: 300000 });
 
   col.on("collect", async (i) => {
     try {
@@ -81,76 +68,182 @@ exports.run = async (client, message) => {
           ephemeral: true
         }).catch(() => {});
       }
-      // Yeni kupon akışı: tip seç → süre → yer
+
       const tip = i.customId === "kupon_yeni_premium" ? "premium" : i.customId === "kupon_yeni_pet" ? "pet" : "para";
-      await i.followUp({ content: EN
-        ? "⏳ **Duration**: reply `sureli <hours>` or `suresiz` (30s)."
-        : "⏳ **Süre**: `sureli <saat>` veya `suresiz` yaz (30 sn).", ephemeral: true }).catch(() => {});
-      const f = (m) => m.author.id === message.author.id && (/^sureli\s+\d+$/i.test(m.content.trim()) || /^suresiz$/i.test(m.content.trim()));
-      const top = await message.channel.awaitMessages({ filter: f, max: 1, time: 30000 }).catch(() => null);
-      const m1 = top?.first?.();
-      if (!m1) return message.channel.send(EN ? "⏳ Cancelled (timeout)." : "⏳ İptal (süre doldu).").catch(() => {});
-      try { await m1.delete(); } catch {}
-      const sureli = /^sureli/i.test(m1.content.trim());
-      const bitis = sureli ? Date.now() + parseInt(m1.content.trim().split(/\s+/)[1], 10) * 3600000 : 0;
 
-      await message.channel.send(EN
-        ? "🌐 **Where?** reply `bot`, `site` (Discord login required on website) or `ikisi` (30s)."
-        : "🌐 **Nerede?** `bot`, `site` (sitede Discord girişi şart) veya `ikisi` yaz (30 sn).").catch(() => {});
-      const f2 = (m) => m.author.id === message.author.id && /^(bot|site|ikisi|both)$/i.test(m.content.trim());
-      const top2 = await message.channel.awaitMessages({ filter: f2, max: 1, time: 30000 }).catch(() => null);
-      const m2 = top2?.first?.();
-      if (!m2) return message.channel.send(EN ? "⏳ Cancelled (timeout)." : "⏳ İptal (süre doldu).").catch(() => {});
-      try { await m2.delete(); } catch {}
-      const yer = /^site$/i.test(m2.content.trim()) ? "site" : /^bot$/i.test(m2.content.trim()) ? "bot" : "ikisi";
+      // ── ADIM 1: Süre (BUTONLA — metin yazma YOK) ──
+      const se = new EmbedBuilder().setColor("Gold").setTitle(EN ? "⏳ Step 1/5 — Duration" : "⏳ Adım 1/5 — Süre")
+        .setDescription(EN ? "How long should this coupon stay valid?" : "Bu kupon ne kadar geçerli olsun?");
+      const sRow1 = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("sure_1h").setLabel(EN ? "1 Hour" : "1 Saat").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("sure_6h").setLabel(EN ? "6 Hours" : "6 Saat").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("sure_1g").setLabel(EN ? "1 Day" : "1 Gün").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("sure_1hafta").setLabel(EN ? "1 Week" : "1 Hafta").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("sure_2hafta").setLabel(EN ? "2 Weeks" : "2 Hafta").setStyle(ButtonStyle.Secondary)
+      );
+      const sRow2 = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("sure_1ay").setLabel(EN ? "1 Month" : "1 Ay").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("sure_3ay").setLabel(EN ? "3 Months" : "3 Ay").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("sure_6ay").setLabel(EN ? "6 Months" : "6 Ay").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("sure_1yil").setLabel(EN ? "1 Year" : "1 Yıl").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("sure_suresiz").setLabel(EN ? "♾️ Permanent" : "♾️ Süresiz").setStyle(ButtonStyle.Success)
+      );
+      const sureMsg = await message.channel.send({ embeds: [se], components: [sRow1, sRow2] });
+      const sureCol = sureMsg.createMessageComponentCollector({ filter: (x) => x.user.id === message.author.id, time: 60000 });
+      const sureSecim = await new Promise((resolve) => {
+        sureCol.on("collect", (x) => { resolve(x.customId); sureCol.stop("ok"); });
+        sureCol.on("end", (r, rsn) => { if (rsn !== "ok") resolve(null); });
+      });
+      sureMsg.edit({ components: [] }).catch(() => {});
+      if (!sureSecim) return message.channel.send(EN ? "⏳ Cancelled (timeout)." : "⏳ İptal (süre doldu).").catch(() => {});
+      const sureMap = { sure_1h: 3600000, sure_6h: 21600000, sure_1g: 86400000, sure_1hafta: 604800000, sure_2hafta: 1209600000, sure_1ay: 2592000000, sure_3ay: 7776000000, sure_6ay: 15552000000, sure_1yil: 31536000000, sure_suresiz: 0 };
+      const bitis = sureMap[sureSecim] || 0;
 
-      // Tip bazlı detay
-      let detay = { tip, bitis, yer, limit: 0, calismalar: 0 };
+      // ── ADIM 2: Yer (BUTONLA) ──
+      const ye = new EmbedBuilder().setColor("Gold").setTitle(EN ? "🌐 Step 2/5 — Where?" : "🌐 Adım 2/5 — Nerede kullanılsın?")
+        .setDescription(EN ? "Website coupons require Discord sign-in on the site." : "Site kuponları sitede Discord girişi gerektirir.");
+      const yRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("yer_bot").setLabel(EN ? "🤖 Bot only" : "🤖 Sadece Bot").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("yer_site").setLabel(EN ? "🌐 Website only" : "🌐 Sadece Site").setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId("yer_ikisi").setLabel(EN ? "🔄 Both" : "🔄 İkisi de").setStyle(ButtonStyle.Secondary)
+      );
+      const yerMsg = await message.channel.send({ embeds: [ye], components: [yRow] });
+      const yerCol = yerMsg.createMessageComponentCollector({ filter: (x) => x.user.id === message.author.id, time: 60000 });
+      const yerSecim = await new Promise((resolve) => {
+        yerCol.on("collect", (x) => { resolve(x.customId.replace("yer_", "")); yerCol.stop("ok"); });
+        yerCol.on("end", (r, rsn) => { if (rsn !== "ok") resolve(null); });
+      });
+      yerMsg.edit({ components: [] }).catch(() => {});
+      if (!yerSecim) return message.channel.send(EN ? "⏳ Cancelled." : "⏳ İptal.").catch(() => {});
+      const yer = yerSecim; // bot | site | ikisi
+
+      // ── ADIM 3: Limit (BUTONLA) ──
+      const le = new EmbedBuilder().setColor("Gold").setTitle(EN ? "♾️ Step 3/5 — Usage limit" : "♾️ Adım 3/5 — Kullanım limiti")
+        .setDescription(EN ? "How many people can redeem it? (Each account: once)" : "Kaç kişi kullanabilsin? (Hesap başına yine tek)");
+      const lRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("limit_1").setLabel(EN ? "1 person" : "1 kişi").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("limit_5").setLabel("5").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("limit_10").setLabel("10").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("limit_50").setLabel("50").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("limit_0").setLabel(EN ? "♾️ Unlimited" : "♾️ Sınırsız").setStyle(ButtonStyle.Success)
+      );
+      const lMsg = await message.channel.send({ embeds: [le], components: [lRow] });
+      const lCol = lMsg.createMessageComponentCollector({ filter: (x) => x.user.id === message.author.id, time: 60000 });
+      const limitSecim = await new Promise((resolve) => {
+        lCol.on("collect", (x) => { resolve(parseInt(x.customId.replace("limit_", ""), 10) || 0); lCol.stop("ok"); });
+        lCol.on("end", (r, rsn) => { if (rsn !== "ok") resolve(null); });
+      });
+      lMsg.edit({ components: [] }).catch(() => {});
+      if (limitSecim === null) return message.channel.send(EN ? "⏳ Cancelled." : "⏳ İptal.").catch(() => {});
+
+      // ── ADIM 4: Ödül detayı ──
+      let detay = { tip, bitis, yer, limit: limitSecim, calismalar: 0 };
       if (tip === "premium") {
-        await message.channel.send(EN ? "💎 **Premium days?** (30s)" : "💎 **Premium gün sayısı?** (30 sn)").catch(() => {});
-        const top3 = await message.channel.awaitMessages({ filter: (m) => m.author.id === message.author.id && /^\d+$/.test(m.content.trim()), max: 1, time: 30000 }).catch(() => null);
-        const m3 = top3?.first?.();
-        if (!m3) return message.channel.send(EN ? "⏳ Cancelled." : "⏳ İptal.").catch(() => {});
-        const gun = Math.min(Math.max(parseInt(m3.content.trim(), 10) || 30, 1), 365);
-        try { await m3.delete(); } catch {}
-        detay.premiumGun = gun;
-        detay.miktar = 0;
+        const pe = new EmbedBuilder().setColor("Gold").setTitle(EN ? "💎 Step 4/5 — Premium days" : "💎 Adım 4/5 — Premium gün")
+          .setDescription(EN ? "How many premium days does this coupon grant?" : "Kupon kaç gün premium versin?");
+        const pRow = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId("prem_7").setLabel(EN ? "7 days" : "7 gün").setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder().setCustomId("prem_15").setLabel(EN ? "15 days" : "15 gün").setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder().setCustomId("prem_30").setLabel(EN ? "30 days" : "30 gün").setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder().setCustomId("prem_90").setLabel(EN ? "90 days" : "90 gün").setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder().setCustomId("prem_999").setLabel(EN ? "♾️ 1 year" : "♾️ 1 yıl").setStyle(ButtonStyle.Success)
+        );
+        const pMsg = await message.channel.send({ embeds: [pe], components: [pRow] });
+        const pCol = pMsg.createMessageComponentCollector({ filter: (x) => x.user.id === message.author.id, time: 60000 });
+        const pSecim = await new Promise((resolve) => {
+          pCol.on("collect", (x) => { resolve(parseInt(x.customId.replace("prem_", ""), 10) || 30); pCol.stop("ok"); });
+          pCol.on("end", (r, rsn) => { if (rsn !== "ok") resolve(null); });
+        });
+        pMsg.edit({ components: [] }).catch(() => {});
+        if (!pSecim) return message.channel.send(EN ? "⏳ Cancelled." : "⏳ İptal.").catch(() => {});
+        detay.premiumGun = pSecim; detay.miktar = 0;
       } else if (tip === "pet") {
-        await message.channel.send(EN ? "🐾 **Pet?** reply `<name> <emoji> <price>` (30s)" : "🐾 **Pet?** `<isim> <emoji> <fiyat>` yaz (30 sn)").catch(() => {});
-        const top3 = await message.channel.awaitMessages({ filter: (m) => m.author.id === message.author.id && /\S+\s+\S+\s+\d+/.test(m.content.trim()), max: 1, time: 30000 }).catch(() => null);
-        const m3 = top3?.first?.();
-        if (!m3) return message.channel.send(EN ? "⏳ Cancelled." : "⏳ İptal.").catch(() => {});
-        const p = m3.content.trim().split(/\s+/);
-        detay.petAd = p[0]; detay.petEmoji = p[1]; detay.petFiyat = Math.max(0, parseInt(p[2], 10) || 50000);
-        detay.miktar = 0;
-        try { await m3.delete(); } catch {}
+        // Pet kataloğundan seçim (menü)
+        const katalog = [
+          { name: "Tavşan", emoji: "🐰", price: 80000 },
+          { name: "Köpek", emoji: "🐶", price: 100000 },
+          { name: "Kedi", emoji: "🐱", price: 150000 },
+          { name: "Balık", emoji: "🐠", price: 180000 },
+          { name: "Aslan", emoji: "🦁", price: 350000 },
+          { name: "Kaplan", emoji: "🐅", price: 380000 }
+        ];
+        const pe = new EmbedBuilder().setColor("Gold").setTitle(EN ? "🐾 Step 4/5 — Pick the pet" : "🐾 Adım 4/5 — Pet seç");
+        const opts = katalog.map(p => new StringSelectMenuOptionBuilder().setLabel(p.name).setValue(`kpet_${p.name}`).setEmoji(p.emoji).setDescription(`${p.price.toLocaleString()} 💸`));
+        const pMsg = await message.channel.send({ embeds: [pe], components: [new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId("kupon_pet_menu").setPlaceholder(EN ? "Pick a pet" : "Pet seç").addOptions(opts))] });
+        const pCol = pMsg.createMessageComponentCollector({ filter: (x) => x.user.id === message.author.id, time: 60000 });
+        const pSecim = await new Promise((resolve) => {
+          pCol.on("collect", (x) => {
+            const ad = x.values[0].replace("kpet_", "");
+            const p = katalog.find(k => k.name === ad) || katalog[0];
+            resolve(p); pCol.stop("ok");
+          });
+          pCol.on("end", (r, rsn) => { if (rsn !== "ok") resolve(null); });
+        });
+        pMsg.edit({ components: [] }).catch(() => {});
+        if (!pSecim) return message.channel.send(EN ? "⏳ Cancelled." : "⏳ İptal.").catch(() => {});
+        detay.petAd = pSecim.name; detay.petEmoji = pSecim.emoji; detay.petFiyat = pSecim.price; detay.miktar = 0;
       } else {
-        await message.channel.send(EN ? "💸 **Amount?** (30s)" : "💸 **Miktar?** (30 sn)").catch(() => {});
-        const top3 = await message.channel.awaitMessages({ filter: (m) => m.author.id === message.author.id && /^\d+$/.test(m.content.trim()), max: 1, time: 30000 }).catch(() => null);
-        const m3 = top3?.first?.();
-        if (!m3) return message.channel.send(EN ? "⏳ Cancelled." : "⏳ İptal.").catch(() => {});
-        detay.miktar = Math.min(Math.max(parseInt(m3.content.trim(), 10) || 200000, 1), 1000000000);
-        try { await m3.delete(); } catch {}
+        // Para miktarı (butonlu hazır + özel)
+        const pe = new EmbedBuilder().setColor("Gold").setTitle(EN ? "💸 Step 4/5 — Cash amount" : "💸 Adım 4/5 — Para miktarı");
+        const pRow = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId("para_50000").setLabel("50K").setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder().setCustomId("para_100000").setLabel("100K").setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder().setCustomId("para_250000").setLabel("250K").setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder().setCustomId("para_500000").setLabel("500K").setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder().setCustomId("para_ozel").setLabel(EN ? "✏️ Custom" : "✏️ Özel").setStyle(ButtonStyle.Primary)
+        );
+        const pMsg = await message.channel.send({ embeds: [pe], components: [pRow] });
+        const pCol = pMsg.createMessageComponentCollector({ filter: (x) => x.user.id === message.author.id, time: 60000 });
+        let miktar = await new Promise((resolve) => {
+          pCol.on("collect", (x) => {
+            if (x.customId === "para_ozel") { resolve("ozel"); pCol.stop("ozel"); }
+            else { resolve(parseInt(x.customId.replace("para_", ""), 10)); pCol.stop("ok"); }
+          });
+          pCol.on("end", (r, rsn) => { if (rsn !== "ok" && rsn !== "ozel") resolve(null); });
+        });
+        pMsg.edit({ components: [] }).catch(() => {});
+        if (miktar === "ozel") {
+          await message.channel.send(EN ? "✏️ Type the custom amount (numbers only, 30s)..." : "✏️ Özel miktarı yaz (sadece sayı, 30 sn)...").catch(() => {});
+          const top = await message.channel.awaitMessages({ filter: (m) => m.author.id === message.author.id && /^\d+$/.test(m.content.trim()), max: 1, time: 30000 }).catch(() => null);
+          const mm = top?.first?.();
+          if (!mm) return message.channel.send(EN ? "⏳ Cancelled." : "⏳ İptal.").catch(() => {});
+          miktar = Math.min(Math.max(parseInt(mm.content.trim(), 10) || 0, 1), 1000000000);
+          try { await mm.delete(); } catch {}
+        }
+        if (miktar === null || miktar === undefined) return message.channel.send(EN ? "⏳ Cancelled." : "⏳ İptal.").catch(() => {});
+        detay.miktar = miktar;
       }
 
-      await message.channel.send(EN ? "♾️ **Usage limit?** (0 = unlimited, 30s)" : "♾️ **Kullanım limiti?** (0 = sınırsız, 30 sn)").catch(() => {});
-      const top4 = await message.channel.awaitMessages({ filter: (m) => m.author.id === message.author.id && /^\d+$/.test(m.content.trim()), max: 1, time: 30000 }).catch(() => null);
-      const m4 = top4?.first?.();
-      if (!m4) return message.channel.send(EN ? "⏳ Cancelled." : "⏳ İptal.").catch(() => {});
-      detay.limit = Math.max(0, parseInt(m4.content.trim(), 10) || 0);
-      try { await m4.delete(); } catch {}
-
-      // Kayıt
+      // ── ADIM 5: Onay + oluştur ──
       const kod = kodUret();
+      const odul = tip === "premium" ? `💎 ${detay.premiumGun} ${EN ? "days premium" : "gün premium"}`
+        : tip === "pet" ? `${detay.petEmoji} ${detay.petAd}`
+        : `💸 ${detay.miktar.toLocaleString()}`;
+      const sureMetin = bitis ? new Date(bitis).toLocaleString("tr-TR") : (EN ? "♾️ Permanent" : "♾️ Süresiz");
+      const onayE = new EmbedBuilder().setColor("Gold").setTitle(EN ? "✅ Step 5/5 — Confirm" : "✅ Adım 5/5 — Onay")
+        .setDescription(`\`${kod}\`\n${EN ? "Reward" : "Ödül"}: **${odul}**\n${EN ? "Duration" : "Süre"}: ${sureMetin}\n${EN ? "Where" : "Yer"}: ${yer}\n${EN ? "Limit" : "Limit"}: ${limitSecim || "∞"}`);
+      const oRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`kupon_olustur_${kod}`).setLabel(EN ? "Create ✅" : "Oluştur ✅").setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId("kupon_iptal").setLabel(EN ? "Cancel" : "İptal").setStyle(ButtonStyle.Danger)
+      );
+      const oMsg = await message.channel.send({ embeds: [onayE], components: [oRow] });
+      const oCol = oMsg.createMessageComponentCollector({ filter: (x) => x.user.id === message.author.id, time: 30000 });
+      const onay = await new Promise((resolve) => {
+        oCol.on("collect", (x) => { resolve(x.customId.startsWith("kupon_olustur")); oCol.stop("ok"); });
+        oCol.on("end", (r, rsn) => { if (rsn !== "ok") resolve(false); });
+      });
+      oMsg.edit({ components: [] }).catch(() => {});
+      if (!onay) return message.channel.send(EN ? "❌ Cancelled." : "❌ İptal edildi.").catch(() => {});
+
       const kayit = { kod, olusturan: message.author.id, tarih: Date.now(), ...detay };
       db.set(`kupon_${kod}`, kayit);
       const liste = kuponlar(); liste.push(kayit); db.set("kuponListesi", liste);
 
-      const ke = new EmbedBuilder().setColor("#00ff00").setTitle(EN ? "✅ Coupon Created" : "✅ Kupon Oluşturuldu")
-        .setDescription(`\`${kod}\`\n${tip === "premium" ? `💎 ${detay.premiumGun} gün premium` : tip === "pet" ? `${detay.petEmoji} ${detay.petAd}` : `💸 ${detay.miktar.toLocaleString()}`}\n${sureli ? `⏳ ${(EN ? "expires in " : "geçerlilik: ") + Math.ceil((bitis - Date.now()) / 3600000) + "h"}` : "♾️ " + (EN ? "permanent" : "süresiz")} | 🌐 ${yer} | ${detay.limit || "∞"} ${EN ? "uses" : "kullanım"}`);
+      const ke = new EmbedBuilder().setColor("#00ff00").setTitle(EN ? "✅ Coupon Created!" : "✅ Kupon Oluşturuldu!")
+        .setDescription(`\`${kod}\` — ${odul}\n${EN ? "Duration" : "Süre"}: ${sureMetin} | 🌐 ${yer}`);
       await message.channel.send({ embeds: [ke] }).catch(() => {});
       ownerLog(client, new EmbedBuilder().setColor("Gold").setTitle("🎟️ Kupon Oluşturuldu")
-        .setDescription(`**Kod:** \`${kod}\`\n**Sahip:** ${message.author.tag}\n**Ödül:** ${tip}\n**Yer:** ${yer}`).setTimestamp()).catch(() => {});
+        .setDescription(`**Kod:** \`${kod}\`\n**Sahip:** ${message.author.tag}\n**Ödül:** ${odul}\n**Yer:** ${yer}\n**Limit:** ${limitSecim || "∞"}`).setTimestamp()).catch(() => {});
     } catch (err) {
       try { i.followUp({ content: "⚠️ " + err.message, ephemeral: true }); } catch {}
     }
@@ -159,4 +252,4 @@ exports.run = async (client, message) => {
 };
 
 exports.conf = { enabled: true, guildOnly: false, aliases: ["kupon-yonet", "kuponpanel", "coupon-manage"], permLevel: 4, kategori: "sahip" };
-exports.help = { name: "kupon", description: "Butonlu kupon yönetimi (sahip): para/pet/premium, süreli/süresiz, bot/site.", usage: "kupon" };
+exports.help = { name: "kupon", description: 'Butonlu kupon yönetimi (sahip): para/pet/premium, süre, bot/site, limit — hepsi butonla.', usage: "kupon" };

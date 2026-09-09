@@ -11,9 +11,15 @@ exports.run = async (client, message, args) => {
     return message.reply(EN ? 'Please enter a coupon code.' : 'Lütfen bir kupon kodu girin.');
   }
 
-  const kupon = db.fetch(`kupon_${couponCode}`);
-  if (!kupon) {
+  let kupon = db.fetch(`kupon_${couponCode}`);
+  // Eski format (saf sayı) geri uyumluluk
+  if (typeof kupon === "number") kupon = { kod: couponCode, tip: "para", miktar: kupon, bitis: 0, yer: "ikisi", limit: 0, calismalar: 0 };
+  if (!kupon || typeof kupon !== "object") {
     return message.reply(EN ? 'The coupon code entered is invalid.' : 'Girilen kupon kodu geçersiz.');
+  }
+  // Eski tek-kullanımlık işaret
+  if (db.fetch(`usedCoupons.${couponCode}`)) {
+    return message.reply(EN ? 'This coupon has already been used.' : 'Bu kupon daha önce kullanılmış.');
   }
 
   // Süre kontrolü
