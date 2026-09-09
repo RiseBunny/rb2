@@ -79,6 +79,7 @@ exports.run = async (client, message, args) => {
       .addOptions(menuKategoriler.map(k => ({ label: katAdi(lang, k.id).slice(0, 90), description: t(lang, `kategoriler.${k.id}`).slice(0, 90), value: k.id, emoji: k.emoji })))
   );
   const butonlar = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setLabel("WebSite").setStyle(ButtonStyle.Link).setURL("https://risebunny.vercel.app").setEmoji("🌐"),
     new ButtonBuilder().setLabel(t(lang, "yardim.davetEt")).setStyle(ButtonStyle.Link).setURL(davet).setEmoji("📨"),
     new ButtonBuilder().setLabel(t(lang, "yardim.destekSunucu")).setStyle(ButtonStyle.Link).setURL(DESTEK).setEmoji("💬"),
     new ButtonBuilder().setLabel(EN ? "V2.0 Coupon" : "V2.0 Kuponu").setStyle(ButtonStyle.Success).setCustomId("kupon_bilgi_v2")
