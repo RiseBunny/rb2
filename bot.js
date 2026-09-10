@@ -121,6 +121,8 @@ client.on("messageDelete", (deleted) => {
 
 require("./util/eventLoader.js")(client);
 U.startPremiumSweeper(client);
+U.startKuponSweeper(client);
+U.startHatirlatSweeper(client);
 
 // ---------- Keepalive + Top.gg entegrasyonu (AutoStats + Vote Webhook) ----------
 // docs.top.gg v1: Api.postMetrics + HMAC imzalı webhook (x-topgg-signature).
@@ -400,6 +402,89 @@ app.post("/api/contact", _botAuth, express.json(), async (req, res) => {
     res.json({ ok: true });
   } catch { res.status(500).json({ error: "hata" }); }
 });
+// Forum yanıt bildirimi → kullanıcı DM'i (site api/notify aynası)
+app.post("/api/notify", _botAuth, express.json(), async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body?.userIds) ? req.body.userIds.map(String).slice(0, 20) : [];
+    const title = String(req.body?.title || "🔔 Bildirim").slice(0, 100);
+    const text = String(req.body?.text || "").slice(0, 500);
+    const url = String(req.body?.url || "").slice(0, 200);
+    if (!ids.length || !text) return res.status(400).json({ error: "eksik alan" });
+    const link = url.startsWith("http") ? url : "https://risebunny.vercel.app/" + url.replace(/^\//, "");
+    let ok = 0;
+    for (const id of ids) {
+      try {
+        const u = await client.users.fetch(id.replace(/\D/g, "").slice(0, 25)).catch(() => null);
+        if (!u) continue;
+        const row = new Discord.ActionRowBuilder().addComponents(
+          new Discord.ButtonBuilder().setLabel("Foruma Git").setStyle(Discord.ButtonStyle.Link).setURL(link)
+        );
+        await u.send({ embeds: [new Discord.EmbedBuilder().setColor("#5865F2").setTitle(title)
+          .setDescription(text).setTimestamp()] , components: [row] }).catch(() => {});
+        ok++;
+      } catch {}
+    }
+    res.json({ ok: true, gonderilen: ok });
+  } catch { res.status(500).json({ error: "hata" }); }
+});
+
+// Site olay günlüğü → sahip log kanalı (forum log aynası)
+app.post("/api/log", _botAuth, express.json(), async (req, res) => {
+  try {
+    const baslik = String(req.body?.baslik || "🌐 Site Olayı").slice(0, 100);
+    const metin = String(req.body?.metin || "").slice(0, 1500);
+    const kim = String(req.body?.kim || "").slice(0, 60);
+    if (!metin) return res.status(400).json({ error: "eksik alan" });
+    U.ownerLog(client, new Discord.EmbedBuilder().setColor("#5865F2").setTitle(baslik)
+      .setDescription((kim ? `**Kullanıcı:** ${kim}\n` : "") + metin)
+      .setTimestamp()).catch(() => {});
+    res.json({ ok: true });
+  } catch { res.status(500).json({ error: "hata" }); }
+});
+
+// ── Veri silme talebi: site → sahip log (onay/ret butonlu) ──
+const SILME_YETKI = [(process.env.SAHIP_ID || U.SAHIP_ID), "1310366324731547798"];
+const SILME_PREFIX = ["para_", "bankapara_", "iban_", "xp_", "seviye_", "seviyeatlama_", "pets_", "premium_", "vote_", "dmail_", "language_", "afk_", "kupon_kullandi_", "onay_", "yedek_veri_"];
+function silmeOzet(id) {
+  const satir = [];
+  try {
+    const cüzdan = Number(db.fetch(`para_${id}`) || 0), banka = Number(db.fetch(`bankapara_${id}`) || 0);
+    if (cüzdan || banka) satir.push(`💸 Para: ${cüzdan.toLocaleString()} + 🏦 ${banka.toLocaleString()}`);
+    const xp = Number(db.fetch(`xp_${id}`) || 0);
+    if (xp) satir.push(`🏆 XP: ${xp.toLocaleString()} (Sv.${U.xpSeviye(xp)})`);
+    const pets = db.fetch(`pets_${id}`) || [];
+    if (Array.isArray(pets) && pets.length) satir.push(`🐾 Pet: ${pets.length} adet`);
+    if (U.isPremium(id)) satir.push(`💎 Premium: aktif`);
+    const mail = db.fetch(`dmail_${id}`);
+    if (mail && mail.email) satir.push(`✉️ Kayıtlı e-posta: ${mail.email}`);
+  } catch {}
+  return satir.length ? satir.join("\n") : "(bot tarafında kayıtlı veri yok)";
+}
+app.post("/api/deletion/request", _botAuth, express.json(), async (req, res) => {
+  try {
+    const docId = String(req.body?.docId || "").slice(0, 60);
+    const discordId = String(req.body?.discordId || "").replace(/\D/g, "").slice(0, 25);
+    const username = String(req.body?.username || "").slice(0, 60);
+    const kapsam = ["bot", "site", "ikisi"].includes(req.body?.kapsam) ? req.body.kapsam : "ikisi";
+    if (!docId || !discordId) return res.status(400).json({ error: "eksik alan" });
+    db.set(`silme_${docId}`, { durum: "bekliyor", sebep: "", discordId, username, kapsam, at: Date.now() });
+    const row = new Discord.ActionRowBuilder().addComponents(
+      new Discord.ButtonBuilder().setCustomId(`sil_onay_${docId}`).setLabel("Kabul Et").setStyle(Discord.ButtonStyle.Success).setEmoji("✅"),
+      new Discord.ButtonBuilder().setCustomId(`sil_red_${docId}`).setLabel("Reddet").setStyle(Discord.ButtonStyle.Danger).setEmoji("✖️")
+    );
+    U.ownerLog(client, { embeds: [new Discord.EmbedBuilder().setColor("Red").setTitle("🗑️ Veri Silme Talebi")
+      .setDescription(`**Kullanıcı:** ${username || "?"} (<@${discordId}>, \`${discordId}\`)\n**Kapsam:** ${kapsam}\n**Talep:** \`${docId}\`\n\n**Silinecek bot verileri:**\n${silmeOzet(discordId)}\n\nSite verileri (forum hesabı + içerikler) onay sonrası kullanıcının tarayıcısında silinir.`)],
+      components: [row] }).catch(() => {});
+    res.json({ ok: true });
+  } catch { res.status(500).json({ error: "hata" }); }
+});
+app.get("/api/deletion/status", _botAuth, async (req, res) => {
+  try {
+    const rec = db.fetch(`silme_${String(req.query.doc || "").slice(0, 60)}`) || { durum: "bekliyor" };
+    res.json({ durum: rec.durum || "bekliyor", sebep: rec.sebep || "", discordId: rec.discordId || "" });
+  } catch { res.json({ durum: "bekliyor" }); }
+});
+
 // ── Herkese açık durum endpointleri (sitenin canlı sayıları + bakım kapısı) ──
 app.get("/api/stats", (req, res) => {
   try {
