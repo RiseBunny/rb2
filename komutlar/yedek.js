@@ -10,13 +10,19 @@ exports.run = async (client, message) => {
     return message.channel.send({ content: EN ? " Only **my owner** can take backups." : " Yedeği sadece **sahibim** alabilir." });
 
   try {
-    // croxydb'nin TÜM kayıtlarını db.all() ile çek (DB dosyası kaynağından)
-    const tum = db.all() || {};
+    // croxydb'nin TÜM kayıtlarını db.all() ile çek (eski snapshot'lar hariç — şişme olmasın)
+    const ham = db.all() || {};
+    const tum = {};
+    for (const k of Object.keys(ham)) { if (!k.startsWith("yedek_veri_")) tum[k] = ham[k]; }
     const keys = Object.keys(tum);
+    // Rotasyon: önceki DB snapshot'ını sil, yenisini kaydet (tek snapshot tutulur)
+    const snapKey = `yedek_veri_${message.author.id}`;
+    try { db.delete(snapKey); } catch {}
     const paket = {
       __risebunny: { tur: "tam-yedek", versiyon: 2, alinan: Date.now(), kayit: keys.length, yapan: message.author.tag },
       data: tum
     };
+    try { db.set(snapKey, paket); } catch {}
     const json = JSON.stringify(paket, null, 0);
     const buf = Buffer.from(json, "utf8");
     const ek = new Discord.AttachmentBuilder(buf, { name: `risebunny-tam-yedek-${Date.now()}.json` });

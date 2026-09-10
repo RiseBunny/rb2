@@ -9,9 +9,22 @@ exports.run = async (client, message) => {
     return message.channel.send({ content: EN ? " Only **my owner** can restore backups." : " Yedeği sadece **sahibim** yükleyebilir." });
 
   const ek = message.attachments.first();
+  const sonArg = (message.content || "").trim().split(/\s+/).slice(1).join(" ").toLowerCase();
+  // Dosyasız kullanım: kayıtlı son snapshot'tan geri yükle
+  if (!ek && (sonArg === "son" || sonArg === "last")) {
+    const snap = db.fetch(`yedek_veri_${message.author.id}`);
+    if (!snap || !snap.data) return message.channel.send(EN ? "No saved snapshot." : "Kayıtlı snapshot yok.");
+    let n = 0;
+    for (const [k, v] of Object.entries(snap.data)) {
+      if (typeof k !== "string" || !k || k.startsWith("yedek_veri_")) continue;
+      try { db.set(k, v); n++; } catch {}
+    }
+    U.ownerLog(client, `💾 **Snapshot geri yüklendi:** ${n} kayıt (${message.author.tag})`).catch(() => {});
+    return message.channel.send(EN ? `✅ Snapshot restored: **${n}** keys.` : `✅ Snapshot geri yüklendi: **${n}** kayıt.`);
+  }
   if (!ek) return message.channel.send(EN
-    ? "Attach the backup `.json` file with this command: `r!yedek-yükle` + file."
-    : "Yedek `.json` dosyasını bu komutla birlikte ekle: `r!yedek-yükle` + dosya.");
+    ? "Attach the backup `.json` file with this command: `r!yedek-yükle` + file (or `r!yedek-yükle son` for saved snapshot)."
+    : "Yedek `.json` dosyasını bu komutla birlikte ekle: `r!yedek-yükle` + dosya (veya kayıtlı snapshot için `r!yedek-yükle son`).");
 
   try {
     const r = await fetch(ek.url);
