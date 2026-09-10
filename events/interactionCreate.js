@@ -45,6 +45,18 @@ module.exports = async (interaction) => {
     if (interaction.isButton()) {
       const id = interaction.customId || "";
 
+      // --- Veri işleme onayı ---
+      if (id === "onay_evet" || id === "onay_hayir") {
+        const ulang = await getLang(interaction.user.id);
+        if (id === "onay_evet") {
+          db.set(`onay_${interaction.user.id}`, Date.now());
+          try { const { ownerLog } = require("../utils"); ownerLog(interaction.client, `✅ **Onay verildi:** ${interaction.user.tag} (\`${interaction.user.id}\`)`).catch(() => {}); } catch {}
+          return interaction.reply({ content: t(ulang, "onay.kabulOk"), ephemeral: true });
+        }
+        try { db.delete(`onay_${interaction.user.id}`); } catch {}
+        return interaction.reply({ content: t(ulang, "onay.redBilgi"), ephemeral: true });
+      }
+
       // --- Raid koruma butonları (Aç / Kapat) ---
       if (id === "raid_btn_ac" || id === "raid_btn_kapat") {
         const lang = await getLang(interaction.user.id);
@@ -265,6 +277,74 @@ module.exports = async (interaction) => {
       }
       if (id === "market_hayir") {
         return interaction.update({ content: "İşlem iptal edildi.", embeds: [], components: [] }).catch(() => {});
+      }
+
+      // --- Veri silme talebi: sahip onayı (emin misin) / reddi (sebepli) ---
+      const SILME_YETKI = [require("../utils").SAHIP_ID, "1310366324731547798"];
+      if (id.startsWith("sil_onay_") || id.startsWith("sil_evet_") || id.startsWith("sil_red_") || id === "sil_vazgec") {
+        if (!SILME_YETKI.includes(interaction.user.id))
+          return interaction.reply({ content: "Yetkin yok.", ephemeral: true }).catch(() => {});
+        const docId = id.startsWith("sil_vazgec") ? null : id.split("_").slice(2).join("_");
+        if (id.startsWith("sil_onay_")) {
+          const { ActionRowBuilder: ARB2, ButtonBuilder: BB2, ButtonStyle: BS2 } = require("discord.js");
+          const row = new ARB2().addComponents(
+            new BB2().setCustomId(`sil_evet_${docId}`).setLabel("Evet, eminim — SİL").setStyle(BS2.Danger).setEmoji("🗑️"),
+            new BB2().setCustomId("sil_vazgec").setLabel("Vazgeç").setStyle(BS2.Secondary)
+          );
+          return interaction.reply({ content: `⚠️ **EMİN MİSİN?** \`${docId}\` talebindeki TÜM veriler kalıcı silinecek.`, components: [row], ephemeral: true }).catch(() => {});
+        }
+        if (id === "sil_vazgec") {
+          return interaction.reply({ content: "Vazgeçildi.", ephemeral: true }).catch(() => {});
+        }
+        if (id.startsWith("sil_red_")) {
+          await interaction.reply({ content: "Red sebebini 60 sn içinde yaz:", ephemeral: true }).catch(() => {});
+          const top = await interaction.channel.awaitMessages({ filter: (m) => SILME_YETKI.includes(m.author.id), max: 1, time: 60000 }).catch(() => null);
+          const sebep = top?.first?.()?.content?.trim().slice(0, 300) || "Belirtilmedi";
+          try { await top?.first?.()?.delete().catch(() => {}); } catch {}
+          const rec = db.fetch(`silme_${docId}`) || {};
+          db.set(`silme_${docId}`, { ...rec, durum: "reddedildi", sebep });
+          try {
+            const u = await interaction.client.users.fetch(String(rec.discordId || "").replace(/\D/g, "")).catch(() => null);
+            if (u) await u.send({ embeds: [new EmbedBuilder().setColor("Red").setTitle("❌ Veri Silme Talebin Reddedildi")
+              .setDescription(`**Sebep:** ${sebep}`).setTimestamp()] }).catch(() => {});
+          } catch {}
+          ownerLog(interaction.client, `❌ **Silme talebi reddedildi:** \`${docId}\` — Sebep: ${sebep}`).catch(() => {});
+          return interaction.followUp({ content: "Reddedildi + kullanıcıya DM atıldı.", ephemeral: true }).catch(() => {});
+        }
+        if (id.startsWith("sil_evet_")) {
+          const rec = db.fetch(`silme_${docId}`) || {};
+          const uid = String(rec.discordId || "").replace(/\D/g, "").slice(0, 25);
+          if (!uid) return interaction.reply({ content: "Kayıt bulunamadı.", ephemeral: true }).catch(() => {});
+          let n = 0;
+          try {
+            const tum = db.all() || {};
+            const PREF = ["para_", "bankapara_", "iban_", "xp_", "seviye_", "seviyeatlama_", "pets_", "premium_", "vote_", "dmail_", "language_", "afk_", "kupon_kullandi_", "onay_", "yedek_veri_"];
+            for (const k of Object.keys(tum)) {
+              if (PREF.some(p => k.startsWith(p)) && k.endsWith("_" + uid)) { try { db.delete(k); n++; } catch {} }
+            }
+            const hat = db.get("hatirlaticilar") || [];
+            if (Array.isArray(hat) && hat.some(h => h.userId === uid)) {
+              db.set("hatirlaticilar", hat.filter(h => h.userId !== uid)); n++;
+            }
+            try {
+              const ayarlar = require("../ayarlar.json");
+              if (Array.isArray(ayarlar.premiumIDs) && ayarlar.premiumIDs.includes(uid)) {
+                ayarlar.premiumIDs = ayarlar.premiumIDs.filter(x => x !== uid);
+                require("fs").writeFileSync("./ayarlar.json", JSON.stringify(ayarlar, null, 2));
+              }
+            } catch {}
+          } catch {}
+          db.set(`silme_${docId}`, { ...rec, durum: "onaylandi", sebep: "" });
+          const kapsam = rec.kapsam || "ikisi";
+          try {
+            const u = await interaction.client.users.fetch(uid).catch(() => null);
+            if (u) await u.send({ embeds: [new EmbedBuilder().setColor("Green").setTitle("✅ Veri Silme Talebin Kabul Edildi")
+              .setDescription(`**Kapsam:** ${kapsam}\n**Bot verilerin silindi** (${n} kayıt).` + (kapsam === "bot" ? "" : "\n🌐 **Site verilerin:** sitedeki Hesabım bölümünden silme işlemini tamamla (onay sonrası otomatik açılır)."))
+              .setTimestamp()] }).catch(() => {});
+          } catch {}
+          ownerLog(interaction.client, `🗑️ **Silme onaylandı:** \`${docId}\` (<@${uid}>) — ${n} bot kaydı silindi, kapsam: ${kapsam}`).catch(() => {});
+          return interaction.reply({ content: `✅ İşlendi: ${n} bot kaydı silindi.`, ephemeral: true }).catch(() => {});
+        }
       }
 
       // --- Blackjack ---

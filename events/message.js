@@ -42,6 +42,20 @@ module.exports = async message => {
     }
   }
 
+  // Veri işleme onayı (dil + yardım serbest, gerisi onay ister)
+  if (canonical !== "dil" && canonical !== "yardım" && !sahipBypass) {
+    let onayli = false;
+    try { onayli = !!db.fetch(`onay_${message.author.id}`); } catch { onayli = false; }
+    if (!onayli) {
+      const ulang = await getLang(message.author.id);
+      try {
+        const { dilPaneli } = require("../komutlar/dil");
+        await message.reply(dilPaneli(prefix, { isOwner, userNeedsLang: userNeedsLang || true, guildNeedsLang })).catch(() => {});
+      } catch {}
+      return message.reply(t(ulang, "onay.gerekli")).catch(() => {});
+    }
+  }
+
   const lang = await getLang(message.author.id);
 
   // Bakım modu (sahip hariç)
