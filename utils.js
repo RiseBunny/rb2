@@ -227,6 +227,45 @@ function getKupon(kod) {
   } catch { return null; }
 }
 
+// ---------- Kupon bayrak migrasyonu (tek seferlik global işaret → limitli yapı) ----------
+// Eski kod, kullanılan kupona `usedCoupons.<kod>=true` yazıyordu (herkesi engeller).
+// Bunu kişi-bazlı sisteme çevirir: sayı-formatlı kupon limit:1 + sayaç:1 olur,
+// nesne kuponlarda bayrak sadece silinir (kişi-bazlı + limit sayacı devralır).
+function migrateKuponFlags() {
+  try {
+    const tum = db.all() || {};
+    const kodlar = new Set();
+    // croxydb noktalı anahtarları iç içe saklar: {usedCoupons: {KOD: true}}
+    const ic = tum.usedCoupons;
+    if (ic && typeof ic === "object") {
+      for (const kod of Object.keys(ic)) kodlar.add(kod);
+    }
+    // ihtimale karşı düz anahtarlar da tara
+    for (const k of Object.keys(tum)) {
+      if (k.startsWith("usedCoupons.")) kodlar.add(k.slice("usedCoupons.".length));
+    }
+    let n = 0;
+    for (const kod of kodlar) {
+      const mevcut = db.fetch(`kupon_${kod}`);
+      if (typeof mevcut === "number") {
+        const norm = { kod, tip: "para", miktar: mevcut, bitis: 0, yer: "ikisi", limit: 1, calismalar: 1 };
+        try { db.set(`kupon_${kod}`, norm); } catch {}
+        try {
+          const liste = db.get("kuponListesi") || [];
+          if (!liste.some(x => x && x.kod === kod)) {
+            liste.push({ ...norm, olusturan: "migrasyon", tarih: Date.now() });
+            db.set("kuponListesi", liste);
+          }
+        } catch {}
+      }
+      try { db.delete(`usedCoupons.${kod}`); } catch {}
+      n++;
+    }
+    if (n > 0) console.log(`[Kupon] ${n} eski global bayrak migrate edildi.`);
+    return n;
+  } catch { return 0; }
+}
+
 // ---------- Kupon süpürücü (süresi dolanları siler, 5 dk) ----------
 function startKuponSweeper(client) {
   const tara = () => {
@@ -338,6 +377,7 @@ module.exports = {
   bakimSebebi,
   startPremiumSweeper,
   startKuponSweeper,
+  migrateKuponFlags,
   getKupon,
   startHatirlatSweeper,
   parseSure,

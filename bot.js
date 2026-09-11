@@ -133,6 +133,7 @@ client.on("messageDelete", (deleted) => {
 require("./util/eventLoader.js")(client);
 U.startPremiumSweeper(client);
 if (typeof U.startKuponSweeper === "function") U.startKuponSweeper(client);
+try { U.migrateKuponFlags(); } catch {}
 if (typeof U.startHatirlatSweeper === "function") U.startHatirlatSweeper(client);
 
 // ---------- Keepalive + Top.gg entegrasyonu (AutoStats + Vote Webhook) ----------
@@ -361,7 +362,6 @@ app.post("/api/coupon/redeem", _botAuth, express.json(), async (req, res) => {
     // Merkezi okuma: eski format + bozuk bitis otomatik onarılır
     let kupon = U.getKupon(kod);
     if (!kupon) return res.status(404).json({ error: "Geçersiz kupon kodu." });
-    if (db.fetch(`usedCoupons.${kod}`)) return res.status(409).json({ error: "Bu kupon daha önce kullanılmış." });
     if (kupon.yer === "bot") return res.status(403).json({ error: "Bu kupon sadece botta kullanılabilir." });
     if (kupon.bitis && Date.now() > kupon.bitis) return res.status(410).json({ error: "Bu kuponun süresi dolmuş." });
     if (kupon.limit && (kupon.calismalar || 0) >= kupon.limit) return res.status(410).json({ error: "Bu kupon kullanım limitine ulaşmış." });
