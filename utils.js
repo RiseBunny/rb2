@@ -197,21 +197,55 @@ function startPremiumSweeper(client) {
   }, 60_000);
 }
 
+// ---------- Kupon okuma + onarım (tek merkez) ----------
+// Eski hatalı kayıtlarda bitis = süre-miktarı (örn. 3600000) yazıyordu;
+// gerçek timestamp'ler 1e12'den büyüktür. Bozuk görünen bitis süresize
+// çevrilir ve düzeltilmiş hali DB'ye geri yazılır.
+function getKupon(kod) {
+  try {
+    kod = String(kod || "").toUpperCase().trim();
+    if (!kod) return null;
+    let kupon = db.fetch(`kupon_${kod}`);
+    if (kupon === undefined || kupon === null) return null;
+    if (typeof kupon === "number") {
+      kupon = { kod, tip: "para", miktar: kupon, bitis: 0, yer: "ikisi", limit: 0, calismalar: 0 };
+      try { db.set(`kupon_${kod}`, kupon); } catch {}
+      return kupon;
+    }
+    if (typeof kupon !== "object") return null;
+    const b = Number(kupon.bitis) || 0;
+    if (b > 0 && b < 1e12) {
+      kupon = { ...kupon, bitis: 0 };
+      try { db.set(`kupon_${kod}`, kupon); } catch {}
+      try {
+        const liste = db.get("kuponListesi") || [];
+        db.set("kuponListesi", liste.map(k => (k && k.kod === kod ? { ...k, bitis: 0 } : k)));
+      } catch {}
+      console.warn(`[Kupon] Bozuk bitis onarıldı → süresiz yapıldı: ${kod}`);
+    }
+    return kupon;
+  } catch { return null; }
+}
+
 // ---------- Kupon süpürücü (süresi dolanları siler, 5 dk) ----------
 function startKuponSweeper(client) {
-  setInterval(() => {
+  const tara = () => {
     try {
       const liste = db.get("kuponListesi") || [];
       if (!Array.isArray(liste) || !liste.length) return;
+      for (const k of liste) { if (k && k.kod) getKupon(k.kod); }
+      const guncel = db.get("kuponListesi") || [];
       const simdi = Date.now();
-      const dolmus = liste.filter(k => k && k.bitis && simdi > Number(k.bitis));
+      const dolmus = guncel.filter(k => k && Number(k.bitis) > 0 && simdi > Number(k.bitis));
       if (!dolmus.length) return;
       const kodlar = new Set(dolmus.map(k => k.kod));
       for (const kod of kodlar) { try { db.delete(`kupon_${kod}`); } catch {} }
-      db.set("kuponListesi", liste.filter(k => !kodlar.has(k.kod)));
+      db.set("kuponListesi", guncel.filter(k => !kodlar.has(k.kod)));
       ownerLog(client, `🧹 **Süresi dolan kuponlar temizlendi:** ${[...kodlar].map(k => `\`${k}\``).join(", ")}`).catch(() => {});
     } catch {}
-  }, 5 * 60 * 1000);
+  };
+  tara();
+  setInterval(tara, 5 * 60 * 1000);
 }
 
 // ---------- Esnek süre ayrıştırıcı ("10dk", "1 saat", "2 hafta", "3 ay") ----------
@@ -304,6 +338,7 @@ module.exports = {
   bakimSebebi,
   startPremiumSweeper,
   startKuponSweeper,
+  getKupon,
   startHatirlatSweeper,
   parseSure,
   xpSeviye,

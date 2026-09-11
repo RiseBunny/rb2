@@ -1,4 +1,5 @@
 require("dotenv").config();
+console.log("[Boot] RiseBunny v2.1.1 (kupon-fix) yükleniyor...");
 const croxydb = require("croxydb");
 if (!croxydb.fetch) croxydb.fetch = croxydb.get;
 if (!croxydb.get) croxydb.get = croxydb.fetch;
@@ -110,6 +111,16 @@ const client = new Discord.Client({
   ],
   partials: [Discord.Partials.Channel, Discord.Partials.Message, Discord.Partials.Reaction]
 });
+// discord-giveaways gibi paketlerin eski 'ready' dinleyicisini sessize al (v14.27 clientReady ile aynı)
+for (const _m of ["once", "on"]) {
+  try {
+    const _orig = client[_m].bind(client);
+    client[_m] = function (_ev, ..._rest) {
+      if (_ev === "ready") _ev = "clientReady";
+      return _orig(_ev, ..._rest);
+    };
+  } catch {}
+}
 
 client.snipeCache = new Map();
 client.on("messageDelete", (deleted) => {
@@ -347,10 +358,9 @@ app.post("/api/coupon/redeem", _botAuth, express.json(), async (req, res) => {
     const id = String(req.body?.userId || "").replace(/\D/g, "").slice(0, 20);
     const kod = String(req.body?.kod || "").toUpperCase().trim();
     if (!id || !kod) return res.status(400).json({ error: "eksik alan" });
-    let kupon = db.fetch(`kupon_${kod}`);
-    // Eski format (saf sayı) geri uyumluluk
-    if (typeof kupon === "number") kupon = { kod, tip: "para", miktar: kupon, bitis: 0, yer: "ikisi", limit: 0, calismalar: 0 };
-    if (!kupon || typeof kupon !== "object") return res.status(404).json({ error: "Geçersiz kupon kodu." });
+    // Merkezi okuma: eski format + bozuk bitis otomatik onarılır
+    let kupon = U.getKupon(kod);
+    if (!kupon) return res.status(404).json({ error: "Geçersiz kupon kodu." });
     if (db.fetch(`usedCoupons.${kod}`)) return res.status(409).json({ error: "Bu kupon daha önce kullanılmış." });
     if (kupon.yer === "bot") return res.status(403).json({ error: "Bu kupon sadece botta kullanılabilir." });
     if (kupon.bitis && Date.now() > kupon.bitis) return res.status(410).json({ error: "Bu kuponun süresi dolmuş." });
