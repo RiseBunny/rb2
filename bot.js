@@ -121,8 +121,8 @@ client.on("messageDelete", (deleted) => {
 
 require("./util/eventLoader.js")(client);
 U.startPremiumSweeper(client);
-U.startKuponSweeper(client);
-U.startHatirlatSweeper(client);
+if (typeof U.startKuponSweeper === "function") U.startKuponSweeper(client);
+if (typeof U.startHatirlatSweeper === "function") U.startHatirlatSweeper(client);
 
 // ---------- Keepalive + Top.gg entegrasyonu (AutoStats + Vote Webhook) ----------
 // docs.top.gg v1: Api.postMetrics + HMAC imzalı webhook (x-topgg-signature).
