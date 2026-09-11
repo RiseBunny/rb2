@@ -128,7 +128,7 @@ const KOMUTLAR = {
   "komutlar": { kat: "genel", en: "command-count", enAlias: ["cmdcount"] },
   "unbanall": { kat: "moderasyon", en: "unban-all", enAlias: ["pardonall"] },
   "uyarı": { kat: "moderasyon", en: "warn", enAlias: ["warning"] },
-  "vip": { kat: "ekonomi", en: "vip", enAlias: ["vip-time"] },
+  "vip": { kat: "premium", en: "vip", enAlias: ["vip-time"] },
   "vipsistemler": { kat: "premium", en: "vip-system", enAlias: ["vipsys"] },
   "y-kayıt-erkek": { kat: "yapayzeka", en: "ai-register-male", enAlias: ["ai-male"] },
   "y-kayıt-kadın": { kat: "yapayzeka", en: "ai-register-female", enAlias: ["ai-female"] },
