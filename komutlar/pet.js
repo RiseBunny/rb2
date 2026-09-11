@@ -1,7 +1,7 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } = require('discord.js');
 const db = require('croxydb');
 const { getLangSync } = require("../dil");
-const { isPremium, ownerLog } = require("../utils");
+const { isPremium, ownerLog, satisDuyuruSatir, satisDuyuruButon } = require("../utils");
 
 // Katalog (site mağazasıyla aynı fiyatlar — bot.js PET_FIYAT ile senkron)
 const petler = {
@@ -29,6 +29,37 @@ function katalogDuz() {
 function findPetByName(name) {
   return katalogDuz().find(p => p.name.toLowerCase() === String(name || "").toLowerCase()) || null;
 }
+
+/* ── Saf işlem çekirdekleri (komut + global buton akışları ortak kullanır) ── */
+function satinAlCekirdek(userId, secilen) {
+  const bakiye = Number(db.fetch(`para_${userId}`) || 0);
+  if (!secilen) return { ok: false, kod: "yok" };
+  if (secilen.rarity === "premium" && !isPremium(userId)) return { ok: false, kod: "premium" };
+  if (bakiye < secilen.price) return { ok: false, kod: "para", bakiye };
+  const pets = db.get(`pets_${userId}`) || [];
+  pets.push({ name: secilen.name, emoji: secilen.emoji, rarity: secilen.rarity, price: secilen.price });
+  db.set(`pets_${userId}`, pets);
+  db.subtract(`para_${userId}`, secilen.price);
+  return { ok: true, bakiye: bakiye - secilen.price };
+}
+function satCekirdek(userId, idx) {
+  const pets = db.get(`pets_${userId}`) || [];
+  const secilen = pets[idx - 1];
+  if (!secilen) return { ok: false };
+  const taban = Number(secilen.price) || Number((findPetByName(secilen.name) || {}).price) || 50000;
+  const zarar = Math.random() < 0.5;
+  const oran = zarar ? 0.90 : 1.10;
+  const geri = Math.floor(taban * oran);
+  const fark = Math.abs(taban - geri);
+  pets.splice(idx - 1, 1);
+  db.set(`pets_${userId}`, pets);
+  db.add(`para_${userId}`, geri);
+  return { ok: true, secilen, taban, geri, fark, zarar };
+}
+exports.katalog = katalogDuz;
+exports.bul = findPetByName;
+exports.satinAlCekirdek = satinAlCekirdek;
+exports.satCekirdek = satCekirdek;
 
 exports.run = async (client, message, args) => {
   const lang = getLangSync(message.author.id);
@@ -132,27 +163,25 @@ async function petSatPanel(message, EN, userId) {
 /* ── Satın alma işlemi ── */
 async function petSatinAl(client, message, secilen, EN) {
   const userId = message.author.id;
-  const bakiye = Number(db.fetch(`para_${userId}`) || 0);
-  if (secilen.rarity === "premium" && !isPremium(userId)) {
+  const sonuc = satinAlCekirdek(userId, secilen);
+  if (!sonuc.ok && sonuc.kod === "yok") return;
+  if (!sonuc.ok && sonuc.kod === "premium") {
     const e = new EmbedBuilder().setColor("Red").setTitle(EN ? "💎 Premium required" : "💎 Premium gerekli")
       .setDescription(`${secilen.emoji} **${secilen.name}** ${EN ? "is a premium pet. Get premium from the site shop!" : "premium pet. Site mağazasından premium alabilirsin!"}`);
     return message.channel.send({ embeds: [e] });
   }
-  if (bakiye < secilen.price) {
+  if (!sonuc.ok) {
+    const bakiye = sonuc.bakiye || 0;
     const e = new EmbedBuilder().setColor("Red").setTitle(EN ? "💸 Not enough cash" : "💸 Yetersiz bakiye")
       .setDescription(EN ? `You need **${secilen.price.toLocaleString()}**, you have **${bakiye.toLocaleString()}**.` : `Gerekli: **${secilen.price.toLocaleString()}**, elinde: **${bakiye.toLocaleString()}**.`);
     return message.channel.send({ embeds: [e] });
   }
-  const pets = db.get(`pets_${userId}`) || [];
-  pets.push({ name: secilen.name, emoji: secilen.emoji, rarity: secilen.rarity, price: secilen.price });
-  db.set(`pets_${userId}`, pets);
-  db.subtract(`para_${userId}`, secilen.price);
 
   const e = new EmbedBuilder().setColor(RARITY_RENK[secilen.rarity] || "Gold")
     .setTitle(EN ? "🎉 Adopted!" : "🎉 Sahiplendin!")
-    .setDescription(`${secilen.emoji} **${secilen.name}** ${EN ? "is now your pet!`" : "artık senin petin!"}\n💸 −${secilen.price.toLocaleString()} ${EN ? "cash" : "RiseBunny Cash"}`)
+    .setDescription(`${secilen.emoji} **${secilen.name}** ${EN ? "is now your pet!`" : "artık senin petin!"}\n💸 −${secilen.price.toLocaleString()} ${EN ? "cash" : "RiseBunny Cash"}\n\n${satisDuyuruSatir(EN)}`)
     .setFooter({ text: EN ? `Rarity: ${RARITY_ADI(secilen.rarity, EN)}` : `Nadirlik: ${RARITY_ADI(secilen.rarity, EN)}` });
-  message.channel.send({ embeds: [e] }).catch(() => {});
+  message.channel.send({ embeds: [e], components: [satisDuyuruButon(EN)] }).catch(() => {});
   ownerLog(client, new EmbedBuilder().setColor("Gold").setTitle("🐾 Pet Satışı")
     .setDescription(`**Alan:** ${message.author.tag} (\`${userId}\`)\n**Pet:** ${secilen.emoji} **${secilen.name}**\n**Fiyat:** ${secilen.price.toLocaleString()} 💸`)
     .setTimestamp()).catch(() => {});
@@ -161,19 +190,9 @@ async function petSatinAl(client, message, secilen, EN) {
 /* ── Satış işlemi: ±%10 adil, embed'li ── */
 async function petSat(client, message, idx, EN) {
   const userId = message.author.id;
-  const pets = db.get(`pets_${userId}`) || [];
-  const secilen = pets[idx - 1];
-  if (!secilen) return message.reply(EN ? "Invalid pet number." : "Geçersiz pet numarası.");
-
-  const taban = Number(secilen.price) || Number((findPetByName(secilen.name) || {}).price) || 50000;
-  const zarar = Math.random() < 0.5; // %50 zarar / %50 kâr — eşit
-  const oran = zarar ? 0.90 : 1.10;
-  const geri = Math.floor(taban * oran);
-  const fark = Math.abs(taban - geri);
-
-  pets.splice(idx - 1, 1);
-  db.set(`pets_${userId}`, pets);
-  db.add(`para_${userId}`, geri);
+  const sonuc = satCekirdek(userId, idx);
+  if (!sonuc.ok) return message.reply(EN ? "Invalid pet number." : "Geçersiz pet numarası.");
+  const { secilen, taban, geri, fark, zarar } = sonuc;
 
   const e = new EmbedBuilder().setColor(zarar ? "#ef4444" : "#22c55e")
     .setTitle(zarar ? (EN ? "📉 Sold at a loss..." : "📉 Zararla sattın...") : (EN ? "📈 Sold at a profit!" : "📈 Kârla sattın!"))

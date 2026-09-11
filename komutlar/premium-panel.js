@@ -1,6 +1,6 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { getLangSync } = require("../dil");
-const { isPremium, DESTEK } = require("../utils");
+const { isPremium, DESTEK, satisDuyuruSatir, satisDuyuruButon } = require("../utils");
 
 exports.run = async (client, message) => {
   const lang = getLangSync(message.author.id);
@@ -20,10 +20,12 @@ exports.run = async (client, message) => {
       { name: "🐾", value: EN ? "Buy **premium pets** (Lion, Tiger)" : "**Premium petler** satın al (Aslan, Kaplan)", inline: true },
       { name: "🛡️", value: EN ? "**Premium protection** (`protection`)" : "**Premium koruma** (`koruma`)", inline: true },
       { name: "⭐", value: EN ? "**Priority** in support tickets" : "Destek biletlerinde **öncelik**", inline: true }
-    );
+    )
+    .addFields({ name: "🛒", value: satisDuyuruSatir(EN) });
 
   const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setLabel(EN ? "Buy Premium" : "Premium Al").setStyle(ButtonStyle.Link).setURL(DESTEK)
+    new ButtonBuilder().setLabel(EN ? "Buy Premium" : "Premium Al").setStyle(ButtonStyle.Link).setURL(DESTEK),
+    new ButtonBuilder().setLabel(EN ? "🛒 Web Shop" : "🛒 Site Mağazası").setStyle(ButtonStyle.Link).setURL("https://risebunny.vercel.app/risebunny")
   );
   await message.channel.send({ embeds: [e], components: [row] });
 };

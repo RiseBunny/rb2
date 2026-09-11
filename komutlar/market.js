@@ -1,6 +1,7 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const db = require('croxydb');
 const { getLangSync } = require("../dil");
+const { satisDuyuruSatir, satisDuyuruButon } = require("../utils");
 
 function marketListesi() {
   try { return db.get("marketListesi") || []; } catch { return []; }
@@ -18,8 +19,8 @@ exports.run = async (client, message, args) => {
     if (!liste.length) return message.reply(EN ? "The market is empty." : "Pazar boş.");
     const satirlar = liste.map(l => `\`#${l.id}\` ${l.pet.emoji} **${l.pet.name}** — ${Number(l.fiyat).toLocaleString()} 💸 | ${EN ? "Seller" : "Satıcı"}: <@${l.satanId}>`);
     const e = new EmbedBuilder().setColor("Gold").setTitle(EN ? "💱 Market" : "💱 Pazar")
-      .setDescription(satirlar.join("\n").slice(0, 3900));
-    return message.channel.send({ embeds: [e] });
+      .setDescription(satirlar.join("\n").slice(0, 3800) + "\n\n" + satisDuyuruSatir(EN));
+    return message.channel.send({ embeds: [e], components: [satisDuyuruButon(EN)] });
   }
 
   // r!market sat <petIndex> <fiyat>
