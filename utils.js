@@ -184,6 +184,70 @@ function startPremiumSweeper(client) {
   }, 60_000);
 }
 
+// ---------- Kupon süpürücü (süresi dolanları siler, 5 dk) ----------
+function startKuponSweeper(client) {
+  setInterval(() => {
+    try {
+      const liste = db.get("kuponListesi") || [];
+      if (!Array.isArray(liste) || !liste.length) return;
+      const simdi = Date.now();
+      const dolmus = liste.filter(k => k && k.bitis && simdi > Number(k.bitis));
+      if (!dolmus.length) return;
+      const kodlar = new Set(dolmus.map(k => k.kod));
+      for (const kod of kodlar) { try { db.delete(`kupon_${kod}`); } catch {} }
+      db.set("kuponListesi", liste.filter(k => !kodlar.has(k.kod)));
+      ownerLog(client, `🧹 **Süresi dolan kuponlar temizlendi:** ${[...kodlar].map(k => `\`${k}\``).join(", ")}`).catch(() => {});
+    } catch {}
+  }, 5 * 60 * 1000);
+}
+
+// ---------- Esnek süre ayrıştırıcı ("10dk", "1 saat", "2 hafta", "3 ay") ----------
+// Döner: milisaniye (sayı) veya null (anlaşılamadı). Maks 30 günle kırpılmaz (çağıran karar verir).
+function parseSure(metin) {
+  if (!metin) return null;
+  let s = String(metin).toLowerCase().replace(/ı/g, "i").replace(/,/g, ".").trim().replace(/\s+/g, " ");
+  let m = s.match(/^(\d+(?:\.\d+)?)\s*([a-zçğıöşü]*)$/);
+  if (!m) return null;
+  const n = parseFloat(m[1]);
+  if (!(n > 0)) return null;
+  const b = (m[2] || "dk").replace(/lar$|ler$/, "");
+  const T = {
+    sn: 1000, snn: 1000, saniye: 1000, sec: 1000, s: 1000,
+    dk: 60000, dakika: 60000, min: 60000, m: 60000,
+    sa: 3600000, saat: 3600000, hour: 3600000, h: 3600000,
+    gun: 86400000, "gün": 86400000, day: 86400000, d: 86400000,
+    hafta: 604800000, hf: 604800000, week: 604800000, w: 604800000,
+    ay: 2592000000, month: 2592000000, mo: 2592000000,
+    yil: 31536000000, "yıl": 31536000000, year: 31536000000, yr: 31536000000
+  };
+  if (!(b in T)) return null;
+  return Math.floor(n * T[b]);
+}
+
+// ---------- Hatırlatıcı süpürücü (30 sn, restart-safe: croxydb) ----------
+function startHatirlatSweeper(client) {
+  setInterval(async () => {
+    try {
+      const liste = db.get("hatirlaticilar") || [];
+      if (!Array.isArray(liste) || !liste.length) return;
+      const simdi = Date.now();
+      const kalan = [];
+      for (const h of liste) {
+        if (!h || !h.at || h.at > simdi) { if (h && h.userId && h.at) kalan.push(h); continue; }
+        try {
+          const u = await client.users.fetch(h.userId).catch(() => null);
+          if (u) await u.send({ embeds: [new EmbedBuilder().setColor("Gold")
+            .setTitle("⏰ Hatırlatma")
+            .setDescription(String(h.metin || "").slice(0, 3900))
+            .setTimestamp(new Date(h.olusturma || simdi))
+            .setFooter({ text: "RiseBunny Hatırlatıcı" })] }).catch(() => {});
+        } catch {}
+      }
+      db.set("hatirlaticilar", kalan);
+    } catch {}
+  }, 30 * 1000);
+}
+
 // ---------- Seviye (XP) sistemi ----------
 /** Toplam XP'den seviyeyi hesaplar (Seviye L icin gereken toplam XP = 100*(L-1)^2). */
 function xpSeviye(xp) {
@@ -223,6 +287,9 @@ module.exports = {
   timedDelete,
   bakimSebebi,
   startPremiumSweeper,
+  startKuponSweeper,
+  startHatirlatSweeper,
+  parseSure,
   xpSeviye,
   xpGerekli,
   seviyeOdulu,
