@@ -274,14 +274,10 @@ module.exports = async (interaction) => {
         if (interaction.user.id !== isteyenId) return interaction.reply({ content: "Bu onayı sadece komutu kullanan kişi verebilir.", ephemeral: true });
         const lang = await getLang(interaction.user.id);
         const EN = lang === "en";
-        const kupon = db.fetch(`kupon_${kod}`);
+        // Merkezi okuma: eski format + bozuk bitis otomatik onarılır
+        const { getKupon } = require("../utils");
+        const kupon = getKupon(kod);
         if (!kupon) return interaction.update({ content: EN ? "Invalid coupon." : "Geçersiz kupon.", embeds: [], components: [] }).catch(() => {});
-        // Eski format (saf sayı) geri uyumluluk
-        if (typeof kupon === "number") {
-          db.add(`para_${interaction.user.id}`, kupon);
-          db.set(`usedCoupons.${kod}`, true);
-          return interaction.update({ content: EN ? `Congratulations, you earned ${kupon.toLocaleString()} 💸!` : `Tebrikler, ${kupon.toLocaleString()} 💸 kazandınız!`, embeds: [], components: [] }).catch(() => {});
-        }
         if (kupon.yer === "site") return interaction.update({ content: EN ? "🌐 This coupon is website-only (Discord login required)." : "🌐 Bu kupon sadece sitede kullanılabilir (Discord girişi şart).", embeds: [], components: [] }).catch(() => {});
         if (kupon.bitis && Date.now() > kupon.bitis) return interaction.update({ content: EN ? "Expired coupon." : "Kuponun süresi dolmuş.", embeds: [], components: [] }).catch(() => {});
         if (kupon.limit && (kupon.calismalar || 0) >= kupon.limit) return interaction.update({ content: EN ? "Usage limit reached." : "Kullanım limitine ulaşılmış.", embeds: [], components: [] }).catch(() => {});
