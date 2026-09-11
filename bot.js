@@ -640,6 +640,10 @@ async function _fbToken() {
     if (!r.ok) { console.warn("[FB] Bot girişi başarısız:", r.status); return null; }
     const j = await r.json();
     _fbTok = j.idToken; _fbExp = Date.now() + (Number(j.expiresIn) || 3600) * 1000;
+    try {
+      const payload = JSON.parse(Buffer.from(String(_fbTok).split(".")[1], "base64").toString("utf8"));
+      console.log(`[FB] giriş OK → token e-postası: ${payload.email || "(yok)"}`);
+    } catch {}
     return _fbTok;
   } catch { return null; }
 }
@@ -664,7 +668,10 @@ async function _lbSync() {
         method: "PATCH", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + tok },
         body: JSON.stringify(body)
       });
-      if (!r.ok) console.warn(`[FB] leaderboard/${kind} yazılamadı:`, r.status);
+      if (!r.ok) {
+        if (r.status === 403) console.warn(`[FB] leaderboard/${kind} 403 → rules publish edilmemiş OLABİLİR ya da bot e-postası 'bot@discord.risebunny.local' değil (üstteki token e-postasını kontrol et).`);
+        else console.warn(`[FB] leaderboard/${kind} yazılamadı:`, r.status);
+      }
       else console.log(`[FB] leaderboard/${kind} senkron ✓ (${data.length})`);
     } catch (e) { console.warn("[FB] senkron hatası:", e.message); }
   }
@@ -688,7 +695,7 @@ async function postStats(reason) {
     console.error("[TopGG] Stats hatası:", e?.response?.data || e.message);
   }
 }
-client.once("ready", () => {
+client.once("clientReady", () => {
   console.log(`[Bot] ${client.user.tag} hazır.`);
   postStats("ready");
   setInterval(() => postStats("30dk"), 30 * 60 * 1000);
