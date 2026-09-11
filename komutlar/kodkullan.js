@@ -1,6 +1,7 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const db = require('croxydb');
 const { getLangSync } = require("../dil");
+const { getKupon } = require("../utils");
 
 exports.run = async (client, message, args) => {
   const lang = getLangSync(message.author.id);
@@ -11,16 +12,13 @@ exports.run = async (client, message, args) => {
     return message.reply(EN ? 'Please enter a coupon code.' : 'Lütfen bir kupon kodu girin.');
   }
 
-  let kupon = db.fetch(`kupon_${couponCode}`);
-  // Eski format (saf sayı) geri uyumluluk
-  if (typeof kupon === "number") kupon = { kod: couponCode, tip: "para", miktar: kupon, bitis: 0, yer: "ikisi", limit: 0, calismalar: 0 };
-  if (!kupon || typeof kupon !== "object") {
+  // Merkezi okuma: eski format + bozuk bitis otomatik onarılır
+  let kupon = getKupon(couponCode);
+  if (!kupon) {
     return message.reply(EN ? 'The coupon code entered is invalid.' : 'Girilen kupon kodu geçersiz.');
   }
-  // Eski tek-kullanımlık işaret
-  if (db.fetch(`usedCoupons.${couponCode}`)) {
-    return message.reply(EN ? 'This coupon has already been used.' : 'Bu kupon daha önce kullanılmış.');
-  }
+  // (Eski global tek-kullanımlık bayrağı migrateKuponFlags ile limit:1'e çevrilir;
+  //  burada ayrıca kontrol edilmez — kişi-bazlı + limit sayacı geçerlidir.)
 
   // Süre kontrolü
   if (kupon.bitis && Date.now() > kupon.bitis) {
