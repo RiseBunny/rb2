@@ -41,5 +41,5 @@ exports.run = async (client, message, args) => {
   return message.reply((lang === "en" ? `${mentioned.tag} VIP set for ${days} days.` : `${mentioned.tag} için VIP süresi ${days} gün olarak ayarlandı.`));
 };
 
-exports.conf = { enabled: true, aliases: ["premium", "vipsüre"], permLevel: 0 };
+exports.conf = { enabled: true, aliases: ["vipsüre"], permLevel: 0, kategori: "premium" };
 exports.help = { name: "vip", description: "VIP kalan süresini gösterir veya VIP tanımlar.", usage: "vip [@kullanıcı] [süre]" };

@@ -15,8 +15,8 @@ exports.run = (client, message, args) => {
 exports.conf = {
   enabled: true,
   guildOnly: false,
-  aliases: ["vip"],
-  kategori: "Bot",
+  aliases: ["vipsistem", "vipsistemleri", "vipsystems"],
+  kategori: "premium",
   permLevel: 0
 };
 
