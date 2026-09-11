@@ -8,7 +8,7 @@
  * Kullanim:
  *   const { isPremium, requirePremium, ownerLog, embed, DESTEK } = require('../utils');
  */
-const { EmbedBuilder, PermissionFlagsBits } = require("discord.js");
+const { EmbedBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 const db = require("croxydb");
 if (!db.fetch) db.fetch = db.get;
 
@@ -16,6 +16,7 @@ let _ayarlar = {};
 try { _ayarlar = require("./ayarlar.json"); } catch { _ayarlar = {}; }
 
 const DESTEK = "https://dsc.gg/risebunny";
+const SITE_MAGAZA = "https://risebunny.vercel.app/risebunny";
 const PREFIX = process.env.PREFIX || _ayarlar.prefix || "r!";
 const SAHIP_ID = process.env.SAHIP_ID || _ayarlar.sahip || "985126554306773063";
 const OWNER_LOG = process.env.OWNER_LOG || _ayarlar.ownerLog || "1192951046012670204";
@@ -103,6 +104,18 @@ async function komutLog(client, message, komutAd) {
     .setFooter({ text: "RiseBunny Komut Log" })
     .setDescription(`**${message.author.tag}** (\`${message.author.id}\`) **${komutAd}** komutunu **${message.guild ? message.guild.name : "DM"}** sunucusunda kullandı.`);
   await ownerLog(client, e);
+}
+
+// ---------- Mağaza duyurusu (sitede indirimli satış + link butonu) ----------
+function satisDuyuruSatir(EN) {
+  return EN
+    ? "💸 **Discounted on the website:** premium & pets are cheaper in the web shop!"
+    : "💸 **Sitede indirimli:** premium ve petler web mağazasında daha uygun!";
+}
+function satisDuyuruButon(EN) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setLabel(EN ? "🛒 Web Shop" : "🛒 Site Mağazası").setStyle(ButtonStyle.Link).setURL(SITE_MAGAZA)
+  );
 }
 
 // ---------- Embed / gönderim ----------
@@ -269,6 +282,9 @@ function seviyeOdulu(seviye) {
 module.exports = {
   db,
   DESTEK,
+  SITE_MAGAZA,
+  satisDuyuruSatir,
+  satisDuyuruButon,
   PREFIX,
   SAHIP_ID,
   OWNER_LOG,
