@@ -40,10 +40,97 @@ module.exports = async (interaction) => {
           .setTimestamp();
         return interaction.reply({ embeds: [embed], ephemeral: true }).catch(() => {});
       }
+
+      // --- Pet global akışları ---
+      // Komut-içi menüler (pet_al_menu/pet_sat_menu select) komut collector'ına aittir → dokunma.
+      // Panel BUTONLARI (isButton) burada, g_pet_* seçimleri aşağıda ele alınır.
+      if (interaction.customId === "pet_al_menu" || interaction.customId === "pet_sat_menu") {
+        return;
+      }
+      if (interaction.customId === "g_pet_al" || interaction.customId === "g_pet_sat") {
+        const { getLangSync } = require("../dil");
+        const petMod = require("../komutlar/pet");
+        const lang = getLangSync(interaction.user.id);
+        const EN = lang === "en";
+        const userId = interaction.user.id;
+        const val = (interaction.values && interaction.values[0]) || "";
+        if (interaction.customId === "g_pet_al" && val.startsWith("g_al_")) {
+          const secilen = petMod.bul(val.replace("g_al_", ""));
+          const sonuc = petMod.satinAlCekirdek(userId, secilen);
+          if (!sonuc.ok && sonuc.kod === "premium") {
+            return interaction.reply({ embeds: [new EmbedBuilder().setColor("Red")
+              .setTitle(EN ? "💎 Premium required" : "💎 Premium gerekli")
+              .setDescription(EN ? "This is a premium pet. Get premium from the site shop!" : "Bu premium pet. Site mağazasından premium alabilirsin!")], ephemeral: true }).catch(() => {});
+          }
+          if (!sonuc.ok) {
+            return interaction.reply({ embeds: [new EmbedBuilder().setColor("Red")
+              .setTitle(EN ? "💸 Not enough cash" : "💸 Yetersiz bakiye")
+              .setDescription(EN ? `You need **${(secilen?.price || 0).toLocaleString()}**.` : `Gerekli: **${(secilen?.price || 0).toLocaleString()}**.`)], ephemeral: true }).catch(() => {});
+          }
+          ownerLog(interaction.client, new EmbedBuilder().setColor("Gold").setTitle("🐾 Pet Satışı")
+            .setDescription(`**Alan:** ${interaction.user.tag} (\`${userId}\`)\n**Pet:** ${secilen.emoji} **${secilen.name}**\n**Fiyat:** ${secilen.price.toLocaleString()} 💸 (panel)`)
+            .setTimestamp()).catch(() => {});
+          return interaction.reply({ embeds: [new EmbedBuilder().setColor("Gold")
+            .setTitle(EN ? "🎉 Adopted!" : "🎉 Sahiplendin!")
+            .setDescription(`${secilen.emoji} **${secilen.name}** ${EN ? "is now your pet!" : "artık senin petin!"}\n\n${require("../utils").satisDuyuruSatir(EN)}`)],
+            components: [require("../utils").satisDuyuruButon(EN)], ephemeral: true }).catch(() => {});
+        }
+        if (interaction.customId === "g_pet_sat" && val.startsWith("g_sat_")) {
+          const sonuc = petMod.satCekirdek(userId, parseInt(val.replace("g_sat_", ""), 10));
+          if (!sonuc.ok) return interaction.reply({ content: EN ? "Invalid pet." : "Geçersiz pet.", ephemeral: true }).catch(() => {});
+          const { secilen, taban, geri, fark, zarar } = sonuc;
+          return interaction.reply({ embeds: [new EmbedBuilder().setColor(zarar ? "#ef4444" : "#22c55e")
+            .setTitle(zarar ? (EN ? "📉 Sold at a loss..." : "📉 Zararla sattın...") : (EN ? "📈 Sold at a profit!" : "📈 Kârla sattın!"))
+            .setDescription(`${secilen.emoji || "🐾"} **${secilen.name}**\n${EN ? "Base" : "Taban"}: ${taban.toLocaleString()} → ${EN ? "Got" : "Aldın"}: ${geri.toLocaleString()} 💸 (${zarar ? "−" : "+"}${fark.toLocaleString()})`)], ephemeral: true }).catch(() => {});
+        }
+        return;
+      }
     }
 
     if (interaction.isButton()) {
       const id = interaction.customId || "";
+
+      // --- Pet panel butonları (Sahiplen / Sat / Petlerim) ---
+      if (id === "pet_al_menu" || id === "pet_sat_menu" || id === "pet_liste") {
+        const { getLangSync } = require("../dil");
+        const petMod = require("../komutlar/pet");
+        const lang = getLangSync(interaction.user.id);
+        const EN = lang === "en";
+        const userId = interaction.user.id;
+        const DJ = require("discord.js");
+        if (id === "pet_liste") {
+          const userPets = db.get(`pets_${userId}`) || [];
+          if (!userPets.length) return interaction.reply({ content: EN ? "You have no pets yet." : "Henüz petin yok.", ephemeral: true }).catch(() => {});
+          return interaction.reply({ embeds: [new EmbedBuilder().setColor("Gold")
+            .setTitle(EN ? "📋 Your Pets" : "📋 Petlerin")
+            .setDescription(userPets.map((p, i) => `${i + 1}. ${p.emoji || "🐾"} **${p.name}** — ${Number(p.price) || 0} 💸`).join("\n").slice(0, 3900))],
+            ephemeral: true }).catch(() => {});
+        }
+        if (id === "pet_al_menu") {
+          const opts = petMod.katalog().map(p => new DJ.StringSelectMenuOptionBuilder()
+            .setLabel(`${p.name} — ${p.price.toLocaleString()} 💸`.slice(0, 100))
+            .setValue(`g_al_${p.name}`).setEmoji(p.emoji)
+            .setDescription(String(p.rarity).slice(0, 100)));
+          return interaction.reply({ embeds: [new EmbedBuilder().setColor("Gold")
+            .setTitle(EN ? "🛒 Adopt a Pet" : "🛒 Pet Sahiplen")
+            .setDescription(EN ? "Pick a pet from the menu below." : "Aşağıdaki menüden bir pet seç.")],
+            components: [new DJ.ActionRowBuilder().addComponents(
+              new DJ.StringSelectMenuBuilder().setCustomId("g_pet_al").setPlaceholder(EN ? "Pick a pet..." : "Pet seç...").addOptions(opts))],
+            ephemeral: true }).catch(() => {});
+        }
+        // pet_sat_menu
+        const userPets = db.get(`pets_${userId}`) || [];
+        if (!userPets.length) return interaction.reply({ content: EN ? "You have no pets to sell." : "Satacak petin yok.", ephemeral: true }).catch(() => {});
+        const opts2 = userPets.slice(0, 24).map((p, i) => new DJ.StringSelectMenuOptionBuilder()
+          .setLabel(`${p.emoji || "🐾"} ${p.name}`.slice(0, 100)).setValue(`g_sat_${i + 1}`)
+          .setDescription(`${Number(p.price) || 0} 💸`.slice(0, 100)));
+        return interaction.reply({ embeds: [new EmbedBuilder().setColor("Gold")
+          .setTitle(EN ? "💼 Sell a Pet (±10%)" : "💼 Pet Sat (±%10)")
+          .setDescription(EN ? "Pick a pet to sell." : "Satılacak peti seç.")],
+          components: [new DJ.ActionRowBuilder().addComponents(
+            new DJ.StringSelectMenuBuilder().setCustomId("g_pet_sat").setPlaceholder(EN ? "Pick..." : "Seç...").addOptions(opts2))],
+          ephemeral: true }).catch(() => {});
+      }
 
       // --- Veri işleme onayı ---
       if (id === "onay_evet" || id === "onay_hayir") {
