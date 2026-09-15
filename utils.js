@@ -335,21 +335,170 @@ function startHatirlatSweeper(client) {
 }
 
 // ---------- Seviye (XP) sistemi ----------
-/** Toplam XP'den seviyeyi hesaplar (Seviye L icin gereken toplam XP = 100*(L-1)^2). */
+// Constants for special rewards
+const SEVIYE_VIP_ROL_ID = "1192950775467495456"; // L25 VIP rol
+const SEVIYE_VIP_SUNUCU_ID = "1192948403232067725"; // L25/L50 sunucu
+const SEVIYE_VIP_SUNUCU_LINK = "https://dsc.gg/risebunny";
+
+/** Toplam XP'den seviyeyi hesaplar (kolaylaştırılmış formül: L. seviye için 50*(L-1) XP). */
 function xpSeviye(xp) {
-  return Math.floor(Math.sqrt(Math.max(0, Number(xp) || 0) / 100)) + 1;
+  const x = Math.max(0, Number(xp) || 0);
+  // Toplam XP = 25 * (L-1) * L  → L = (1 + sqrt(1 + 4*x/25)) / 2
+  return Math.floor((1 + Math.sqrt(1 + 4 * x / 25)) / 2);
 }
 
-/** L -> L+1 seviyesi icin gereken XP. */
+/** L -> L+1 seviyesi icin gereken XP (kolaylaştırılmış: 50 * L). */
 function xpGerekli(seviye) {
   const s = Math.max(1, Number(seviye) || 1);
-  return 100 * (2 * s - 1);
+  return 50 * s;
 }
 
-/** Seviye odulleri (para). Belli seviyelerde otomatik bonus verilir. */
-const SEVIYE_ODULLERI = { 5: 50000, 10: 150000, 15: 300000, 20: 500000, 25: 750000, 30: 1000000, 40: 2000000, 50: 5000000 };
+/** Seviye L'e ulaşmak için gereken toplam XP. */
+function xpToplam(seviye) {
+  const s = Math.max(1, Number(seviye) || 1);
+  return 25 * (s - 1) * s;
+}
+
+/** Seviye ödülleri (para) — artırılmış değerler. */
+const SEVIYE_ODULLERI = { 5: 75000, 10: 250000, 15: 500000, 20: 1000000, 25: 2000000, 30: 3000000, 40: 5000000, 50: 10000000 };
 function seviyeOdulu(seviye) {
   return SEVIYE_ODULLERI[Number(seviye)] || 0;
+}
+
+/** Her komut kullanımında verilecek XP (temel + premium bonusu). */
+function xpPerCommand(userId) {
+  const baseXP = 15; // komut başına temel XP
+  const prem = isPremium(userId) ? 1.5 : 1;
+  return Math.floor(baseXP * prem);
+}
+
+/** Komut sonrası XP ver, seviye atlaması ve ödülleri kontrol et. */
+async function giveCommandXp(client, userId, guildId) {
+  try {
+    const key = `xp_${userId}`;
+    const oncekiXP = Number(db.fetch(key) || 0);
+    const eklenenXP = xpPerCommand(userId);
+    const yeniXP = oncekiXP + eklenenXP;
+    db.set(key, yeniXP);
+
+    const oncekiSeviye = xpSeviye(oncekiXP);
+    const yeniSeviye = xpSeviye(yeniXP);
+
+    // Seviye atlandı mı?
+    if (yeniSeviye > oncekiSeviye) {
+      // Seviye ödülü (para)
+      for (let s = oncekiSeviye + 1; s <= yeniSeviye; s++) {
+        const odul = seviyeOdulu(s);
+        if (odul > 0) {
+          db.add(`para_${userId}`, odul);
+        }
+        // L25 VIP rol
+        if (s === 25) {
+          await handleLevelReward(client, userId, guildId, 25, odul, "VIP rol", true);
+        }
+        // L50 1 yıllık premium
+        if (s === 50) {
+          await handleLevelReward(client, userId, guildId, 50, odul, "1 yıllık Premium", false);
+        }
+      }
+      // DM bildirimi (genel seviye atlaması)
+      try {
+        const { getLangSync, t } = require("./dil");
+        const lang = getLangSync(userId);
+        const u = await client.users.fetch(userId).catch(() => null);
+        if (u) {
+          const odulToplam = Object.entries(SEVIYE_ODULLERI)
+            .filter(([k]) => Number(k) > oncekiSeviye && Number(k) <= yeniSeviye)
+            .reduce((sum, [, v]) => sum + v, 0);
+          const dmText = t(lang, "seviye.seviyeAtlandi", { seviye: yeniSeviye, xp: eklenenXP, toplam: yeniXP.toLocaleString(), bonus: odulToplam.toLocaleString() });
+          await u.send({ embeds: [new EmbedBuilder().setColor("Gold")
+            .setTitle(t(lang, lang === "en" ? "seviye.seviyeAtlandi" : "seviye.seviyeAtlandi").split('\n')[0] || (lang === "en" ? "🎉 Level Up!" : "🎉 Seviye Atladın!"))
+            .setDescription(dmText)
+            .setTimestamp()] }).catch(() => {});
+        }
+      } catch {}
+    }
+  } catch {}
+}
+
+/** Seviye özel ödülleri (rol/premium) işler. */
+async function handleLevelReward(client, userId, guildId, seviye, odul, tur, isVipRol) {
+  try {
+    const { getLangSync, t } = require("./dil");
+    const lang = getLangSync(userId);
+    const u = await client.users.fetch(userId).catch(() => null);
+
+    if (isVipRol && guildId === SEVIYE_VIP_SUNUCU_ID) {
+      const guild = client.guilds.cache.get(guildId);
+      if (guild) {
+        const member = await guild.members.fetch(userId).catch(() => null);
+        const rol = guild.roles.cache.get(SEVIYE_VIP_ROL_ID);
+        if (member && rol) {
+          if (!member.roles.cache.has(rol.id)) {
+            await member.roles.add(rol).catch(() => {});
+          }
+          // DM embed - using translations
+          if (u) {
+            const dmText = t(lang, "seviye.vipRolKazandin", { seviye, sunucu: guild.name, rol: rol.name, odul: odul.toLocaleString() });
+            await u.send({ embeds: [new EmbedBuilder().setColor("Gold")
+              .setTitle(t(lang, lang === "en" ? "seviye.vipRolKazandin" : "seviye.vipRolKazandin").split('\n')[0] || (lang === "en" ? `🎉 Level ${seviye} — VIP Role!` : `🎉 Seviye ${seviye} — VIP Rolü!`))
+              .setDescription(dmText)
+              .setThumbnail(guild.iconURL({ dynamic: true }))
+              .setTimestamp()] }).catch(() => {});
+          }
+          // Owner log
+          ownerLog(client, `🏆 **L${seviye} VIP Rol:** ${u?.tag || userId} (\`${userId}\`) → ${rol.name} @ ${guild.name}`);
+        } else if (u) {
+          // Sunucuda değil - DM ile davet
+          const dmText = t(lang, "seviye.vipRolDm", { seviye, odul: odul.toLocaleString() });
+          await u.send({ embeds: [new EmbedBuilder().setColor("Gold")
+            .setTitle(lang === "en" ? `🎉 Level ${seviye} Reached!` : `🎉 Seviye ${seviye} Kazandın!`)
+            .setDescription(dmText)
+            .setTimestamp()] }).catch(() => {});
+          ownerLog(client, `🏆 **L${seviye} VIP Rol (DM):** ${u.tag} (\`${userId}\`) — sunucuda değil, DM gönderildi`);
+        }
+      }
+    }
+
+    if (seviye === 50) {
+      // 1 yıllık premium
+      addPremium(userId, 365 * 24 * 60 * 60 * 1000);
+      if (u) {
+        const dmText = t(lang, "seviye.premium50", { odul: odul.toLocaleString() });
+        await u.send({ embeds: [new EmbedBuilder().setColor("Gold")
+          .setTitle(lang === "en" ? "💎 Level 50 — 1 Year Premium!" : "💎 Seviye 50 — 1 Yıllık Premium!")
+          .setDescription(dmText)
+          .setTimestamp()] }).catch(() => {});
+      }
+      ownerLog(client, `💎 **L50 Premium:** ${u?.tag || userId} (\`${userId}\`) — 1 yıl premium verildi`);
+    }
+  } catch {}
+}
+
+/** r!rolal komutu için: sunucuda varsa L25 rolünü ver. */
+async function checkAndGiveLevelRole(client, userId) {
+  try {
+    const { getLangSync, t } = require("./dil");
+    const lang = getLangSync(userId);
+    const guild = client.guilds.cache.get(SEVIYE_VIP_SUNUCU_ID);
+    if (!guild) return { ok: false, msg: t(lang, "seviye.rolalSunucudaDegil") };
+
+    const member = await guild.members.fetch(userId).catch(() => null);
+    if (!member) return { ok: false, msg: t(lang, "seviye.rolalSunucudaDegil") };
+
+    const seviye = xpSeviye(Number(db.fetch(`xp_${userId}`) || 0));
+    if (seviye < 25) return { ok: false, msg: t(lang, "seviye.rolalSeviyeYetersiz", { seviye }) };
+
+    const rol = guild.roles.cache.get(SEVIYE_VIP_ROL_ID);
+    if (!rol) return { ok: false, msg: t(lang, "seviye.rolalRolBulunamadi") };
+
+    if (member.roles.cache.has(rol.id)) return { ok: true, msg: t(lang, "seviye.rolalZatenVar", { rol: rol.name }) };
+
+    await member.roles.add(rol).catch(() => {});
+    return { ok: true, msg: t(lang, "seviye.rolalBasarili", { rol: rol.name }) };
+  } catch (e) {
+    return { ok: false, msg: String(e.message || e) };
+  }
 }
 
 module.exports = {
@@ -383,6 +532,10 @@ module.exports = {
   parseSure,
   xpSeviye,
   xpGerekli,
+  xpToplam,
+  xpPerCommand,
+  giveCommandXp,
+  checkAndGiveLevelRole,
   seviyeOdulu,
   SEVIYE_ODULLERI,
   Perms: PermissionFlagsBits
