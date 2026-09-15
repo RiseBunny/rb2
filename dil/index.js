@@ -64,6 +64,27 @@ function hasLang(userId) {
   }
 }
 
+/** Kullanicinin veri isleme onayı var mi? */
+function hasConsent(userId) {
+  try {
+    if (!userId) return false;
+    return db.fetch(`consent_${userId}`) === true;
+  } catch {
+    return false;
+  }
+}
+
+/** Kullanici onayini kaydet */
+function setConsent(userId, accepted) {
+  try {
+    if (!userId) return false;
+    db.set(`consent_${userId}`, !!accepted);
+    return !!accepted;
+  } catch {
+    return false;
+  }
+}
+
 /** Sunucu dili (bot.js sistem cevaplari bu dili kullanir). Varsayilan: tr. */
 function getGuildLang(guildId) {
   try {
@@ -169,4 +190,4 @@ function t(lang, key, vars = {}) {
   return text.replace(/\{(\w+)\}/g, (_, k) => (vars[k] !== undefined ? String(vars[k]) : `{${k}}`));
 }
 
-module.exports = { diller, GECERLI, VARSAYILAN, normalizeLang, getLang, getLangSync, setLang, hasLang, getGuildLang, setGuildLang, hasGuildLang, t, KOMUTLAR, KATEGORILER, katAdi, katCoz, komutCoz, komutAdi, komutAliaslari, komutBilgi };
+module.exports = { diller, GECERLI, VARSAYILAN, normalizeLang, getLang, getLangSync, setLang, hasLang, hasConsent, setConsent, getGuildLang, setGuildLang, hasGuildLang, t, KOMUTLAR, KATEGORILER, katAdi, katCoz, komutCoz, komutAdi, komutAliaslari, komutBilgi };

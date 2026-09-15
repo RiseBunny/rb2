@@ -391,7 +391,7 @@ module.exports = {
     alinacak: "Role to take",
     kayitBasarili: "{uye} has been registered successfully! Have fun!"
   },
-  onay: {
+onay: {
     baslik: 'Data Processing Consent',
     aciklama: 'To use commands, first pick your language, then read the docs below and accept.',
     dokuman: '📄 Documentation',
@@ -402,5 +402,17 @@ module.exports = {
     kabulOk: '✅ Consent saved! You can now use commands.',
     redBilgi: 'Consent is required to use commands. Press **Save & Accept** in the language menu.',
     gerekli: 'You must give data processing consent first! Press **Save & Accept** in the language menu. (r!dil)',
+  },
+  seviye: {
+    vipRolKazandin: 'Congratulations! You reached **Level {seviye}** on RiseBunny!\n\n**Reward:** VIP Role **{rol}** has been given on **{sunucu}** server!\n\n💸 Bonus: {odul} 💸',
+    vipRolDm: 'Congratulations on reaching **Level {seviye}**!\n\n**Reward:** VIP Role **awaiting you on our server**.\nJoin: https://dsc.gg/risebunny\nUse `r!rolal` after joining to claim your role!\n\n💸 Bonus: {odul} 💸',
+    premium50: 'Amazing! You reached **Level 50**!\n\n**Reward:** **1 Year of RiseBunny Premium** activated!\n\n💸 Bonus: {odul} 💸',
+    seviyeAtlandi: 'Congratulations! You reached **Level {seviye}**!\n+{xp} XP (Total: {toplam})\n💸 Bonus: {bonus} 💸',
+    rolalBasarili: 'VIP Role **{rol}** has been given!',
+    rolalZatenVar: 'You already have the **{rol}** role.',
+    rolalSeviyeYetersiz: 'Level 25 required (currently {seviye}).',
+    rolalSunucudaDegil: 'You are not in the target server.',
+    rolalRolBulunamadi: 'Role not found on server.',
+    xpPerCommand: 'You earned {xp} XP per command. (Premium: +50%)',
   },
 };

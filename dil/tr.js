@@ -391,7 +391,7 @@ module.exports = {
     alinacak: "Alınacak rol",
     kayitBasarili: "{uye} başarıyla kayıt edildi! İyi eğlenceler!"
   },
-  onay: {
+onay: {
     baslik: 'Veri İşleme Onayı',
     aciklama: 'Komutları kullanabilmek için önce dilini seç, ardından aşağıdaki belgeleri okuyup onayla.',
     dokuman: '📄 Dökümantasyon',
@@ -402,5 +402,17 @@ module.exports = {
     kabulOk: '✅ Onayın kaydedildi! Komutları kullanabilirsin.',
     redBilgi: 'Komutları kullanmak için onayın gerekli. Onaylamak için dil menüsündeki **Kaydet ve Kabul Et** butonuna bas.',
     gerekli: 'Önce veri işleme onayını vermelisin! Dil menüsünden **Kaydet ve Kabul Et** butonuna bas. (r!dil)',
+  },
+  seviye: {
+    vipRolKazandin: 'Tebrikler! RiseBunny\'de **Seviye {seviye}**\'e ulaştın!\n\n**Ödül:** **{sunucu}** sunucusunda **VIP Rolü ({rol})** verildi!\n\n💸 Bonus: {odul} 💸',
+    vipRolDm: 'Tebrikler! **Seviye {seviye}**\'e ulaştın!\n\n**Ödül:** VIP Rolü **sunucumuzda sizi bekliyor**.\nKatıl: https://dsc.gg/risebunny\nSunucuya girdikten sonra `r!rolal` yazıp rolünüzü alın!\n\n💸 Bonus: {odul} 💸',
+    premium50: 'Harika! **Seviye 50**\'e ulaştın!\n\n**Ödül:** **1 Yıllık RiseBunny Premium** aktif edildi!\n\n💸 Bonus: {odul} 💸',
+    seviyeAtlandi: 'Tebrikler! **Seviye {seviye}**\'e ulaştın!\n+{xp} XP (Toplam: {toplam})\n💸 Bonus: {bonus} 💸',
+    rolalBasarili: 'VIP Rolü **{rol}** verildi!',
+    rolalZatenVar: 'Zaten **{rol}** rolünüz var.',
+    rolalSeviyeYetersiz: 'Seviye 25 gerekli (şu an {seviye}).',
+    rolalSunucudaDegil: 'Hedef sunucuda değilsiniz.',
+    rolalRolBulunamadi: 'Rol sunucuda bulunamadı.',
+    xpPerCommand: 'Komut başına {xp} XP kazandınız. (Premium: +50%)',
   },
 };
