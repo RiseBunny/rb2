@@ -63,10 +63,30 @@ exports.run = async (client, message) => {
         const opts = liste.slice(0, 24).map(k => new StringSelectMenuOptionBuilder()
           .setLabel(`${k.kod} (${k.tip})`.slice(0, 100)).setValue(`kupon_sil_${k.kod}`)
           .setDescription((EN ? "Tap to delete" : "Silmek için seç").slice(0, 100)));
-        return i.followUp({
+        const follow = await i.followUp({
           components: [new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId("kupon_sil_menu").setPlaceholder(EN ? "Pick to delete" : "Silinecek kupon").addOptions(opts))],
           ephemeral: true
         }).catch(() => {});
+        if (!follow) return;
+        // Local collector for the ephemeral followUp's select menu
+        const selCol = follow.createMessageComponentCollector({ filter: (x) => x.user.id === message.author.id, time: 60000, componentType: 3 });
+        selCol.on("collect", async (sel) => {
+          try {
+            await sel.deferUpdate().catch(() => {});
+            const kod = String((sel.values && sel.values[0]) || "").replace("kupon_sil_", "");
+            if (!kod) return sel.followUp({ content: EN ? "Pick a coupon first." : "Önce kupon seç.", ephemeral: true }).catch(() => {});
+            const mevcut = db.fetch(`kupon_${kod}`);
+            if (mevcut === undefined || mevcut === null) return sel.followUp({ content: EN ? "Coupon not found (maybe already deleted)." : "Kupon bulunamadı (belki zaten silinmiş).", ephemeral: true }).catch(() => {});
+            try { db.delete(`kupon_${kod}`); } catch {}
+            try { const l = db.get("kuponListesi") || []; db.set("kuponListesi", l.filter(k => k && k.kod !== kod)); } catch {}
+            try { ownerLog(client, `🗑️ **Kupon silindi (panel):** \`${kod}\` (${sel.user.tag})`).catch(() => {}); } catch {}
+            return sel.followUp({ content: EN ? `Coupon \`${kod}\` deleted. ✅` : `\`${kod}\` kuponu silindi. ✅`, ephemeral: true }).catch(() => {});
+          } catch (err) {
+            try { sel.followUp({ content: "⚠️ " + err.message, ephemeral: true }); } catch {}
+          }
+        });
+        selCol.on("end", () => { follow.edit({ components: [] }).catch(() => {}); });
+        return;
       }
 
       const tip = i.customId === "kupon_yeni_premium" ? "premium" : i.customId === "kupon_yeni_pet" ? "pet" : "para";
@@ -97,7 +117,8 @@ exports.run = async (client, message) => {
       sureMsg.edit({ components: [] }).catch(() => {});
       if (!sureSecim) return message.channel.send(EN ? "⏳ Cancelled (timeout)." : "⏳ İptal (süre doldu).").catch(() => {});
       const sureMap = { sure_1h: 3600000, sure_6h: 21600000, sure_1g: 86400000, sure_1hafta: 604800000, sure_2hafta: 1209600000, sure_1ay: 2592000000, sure_3ay: 7776000000, sure_6ay: 15552000000, sure_1yil: 31536000000, sure_suresiz: 0 };
-      const bitis = sureMap[sureSecim] || 0;
+      const durMs = sureMap[sureSecim] || 0;
+      const bitis = durMs > 0 ? Date.now() + durMs : 0;
 
       // ── ADIM 2: Yer (BUTONLA) ──
       const ye = new EmbedBuilder().setColor("Gold").setTitle(EN ? "🌐 Step 2/5 — Where?" : "🌐 Adım 2/5 — Nerede kullanılsın?")
