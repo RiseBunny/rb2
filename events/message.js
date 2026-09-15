@@ -1,6 +1,6 @@
 const { EmbedBuilder, PermissionFlagsBits } = require("discord.js");
-const { t, getLang, hasLang, hasGuildLang, komutCoz } = require("../dil");
-const { PREFIX, SAHIP_ID, bakimSebebi, ownerLog } = require("../utils");
+const { t, getLang, hasLang, hasGuildLang, hasConsent, komutCoz } = require("../dil");
+const { PREFIX, SAHIP_ID, bakimSebebi, ownerLog, giveCommandXp } = require("../utils");
 const db = require("croxydb");
 
 // NOT: Komut kullanımları otomatik olarak sahip loguna DÜŞMEZ.
@@ -44,9 +44,7 @@ module.exports = async message => {
 
   // Veri işleme onayı (dil + yardım serbest, gerisi onay ister)
   if (canonical !== "dil" && canonical !== "yardım" && !sahipBypass) {
-    let onayli = false;
-    try { onayli = !!db.fetch(`onay_${message.author.id}`); } catch { onayli = false; }
-    if (!onayli) {
+    if (!hasConsent(message.author.id)) {
       const ulang = await getLang(message.author.id);
       try {
         const { dilPaneli } = require("../komutlar/dil");
@@ -101,6 +99,10 @@ module.exports = async message => {
 
   try {
     await cmd.run(client, message, params, perms);
+    // Komut başarıyla çalıştıysa XP ver
+    if (cmd.conf.enabled !== false) {
+      try { await giveCommandXp(client, message.author.id, message.guild.id); } catch {}
+    }
   } catch (error) {
     console.error(`Komut ${cmd.help.name} hatası:`, error.message);
     try { await message.channel.send(t(lang, "ortak.hata")); } catch {}

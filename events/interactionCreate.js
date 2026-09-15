@@ -1,10 +1,24 @@
 const { EmbedBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
-const { t, getLang, setLang, setGuildLang, hasGuildLang } = require("../dil");
+const { t, getLang, setLang, setGuildLang, hasGuildLang, hasConsent, setConsent } = require("../dil");
 const { ownerLog } = require("../utils");
 const db = require("croxydb");
 
 module.exports = async (interaction) => {
   try {
+    // Consent gate for interactions (buttons/selects) — allow language select, consent buttons, owner bypass
+    if (interaction.isButton() || interaction.isStringSelectMenu()) {
+      const { SAHIP_ID } = require("../utils");
+      const isOwner = interaction.user.id === SAHIP_ID;
+      const id = interaction.customId || "";
+      const isConsentButton = id === "onay_evet" || id === "onay_hayir";
+      const isLangSelect = id === "dil_sec" || id === "sdil_sec";
+      if (!isOwner && !isConsentButton && !isLangSelect) {
+        if (!hasConsent(interaction.user.id)) {
+          const ulang = await getLang(interaction.user.id);
+          return interaction.reply({ content: t(ulang, "onay.gerekli"), ephemeral: true }).catch(() => {});
+        }
+      }
+    }
     if (interaction.isStringSelectMenu()) {
       if (interaction.customId === "dil_sec") {
         const sec = interaction.values[0];
@@ -85,6 +99,22 @@ module.exports = async (interaction) => {
         }
         return;
       }
+
+      // --- Kupon silme menüsü (sahip paneli select) ---
+      if (interaction.customId === "kupon_sil_menu") {
+        const kod = String((interaction.values && interaction.values[0]) || "").replace("kupon_sil_", "");
+        const { SAHIP_ID } = require("../utils");
+        const { getLangSync } = require("../dil");
+        const EN = getLangSync(interaction.user.id) === "en";
+        if (interaction.user.id !== SAHIP_ID) return interaction.reply({ content: EN ? "Owner only." : "Sadece sahip.", ephemeral: true }).catch(() => {});
+        if (!kod) return interaction.reply({ content: EN ? "Pick a coupon first." : "Önce kupon seç.", ephemeral: true }).catch(() => {});
+        const mevcut = db.fetch(`kupon_${kod}`);
+        if (mevcut === undefined || mevcut === null) return interaction.reply({ content: EN ? "Coupon not found (maybe already deleted)." : "Kupon bulunamadı (belki zaten silinmiş).", ephemeral: true }).catch(() => {});
+        try { db.delete(`kupon_${kod}`); } catch {}
+        try { const l = db.get("kuponListesi") || []; db.set("kuponListesi", l.filter(k => k && k.kod !== kod)); } catch {}
+        try { const { ownerLog } = require("../utils"); ownerLog(interaction.client, `🗑️ **Kupon silindi (panel):** \`${kod}\` (${interaction.user.tag})`).catch(() => {}); } catch {}
+        return interaction.reply({ content: EN ? `Coupon \`${kod}\` deleted. ✅` : `\`${kod}\` kuponu silindi. ✅`, ephemeral: true }).catch(() => {});
+      }
     }
 
     if (interaction.isButton()) {
@@ -136,12 +166,29 @@ module.exports = async (interaction) => {
       if (id === "onay_evet" || id === "onay_hayir") {
         const ulang = await getLang(interaction.user.id);
         if (id === "onay_evet") {
-          db.set(`onay_${interaction.user.id}`, Date.now());
+          setConsent(interaction.user.id, true);
           try { const { ownerLog } = require("../utils"); ownerLog(interaction.client, `✅ **Onay verildi:** ${interaction.user.tag} (\`${interaction.user.id}\`)`).catch(() => {}); } catch {}
+          // Onay veren kullanıcıya docs linkli karşılama DM'i (kendi dilinde)
+          try {
+            const { EmbedBuilder: EB2 } = require("discord.js");
+            const dmE = new EB2().setColor("Green")
+              .setTitle(ulang === "en" ? "🎉 Welcome to RiseBunny!" : "🎉 RiseBunny'ye Hoş Geldin!")
+              .setDescription(
+                (ulang === "en"
+                  ? `Thanks for accepting! Here is everything in one place:\n📄 **Docs & commands:** https://risebunny.vercel.app/docs.html\n🔒 **Privacy:** https://risebunny.vercel.app/privacy.html\n📜 **Terms:** https://risebunny.vercel.app/terms.html\n\nType \`r!yardım\` anywhere to start!`
+                  : `Onayın için teşekkürler! Her şey tek sayfada:\n📄 **Dökümantasyon & komutlar:** https://risebunny.vercel.app/docs.html\n🔒 **Gizlilik:** https://risebunny.vercel.app/privacy.html\n📜 **Şartlar:** https://risebunny.vercel.app/terms.html\n\nBaşlamak için herhangi bir yerde \`r!yardım\` yaz!`));
+            await interaction.user.send({ embeds: [dmE] }).catch(() => {});
+          } catch {}
           return interaction.reply({ content: t(ulang, "onay.kabulOk"), ephemeral: true });
         }
-        try { db.delete(`onay_${interaction.user.id}`); } catch {}
+        setConsent(interaction.user.id, false);
         return interaction.reply({ content: t(ulang, "onay.redBilgi"), ephemeral: true });
+      }
+
+      // --- Veri silme talebi butonları (sahip onayı + kullanıcı son onayı) ---
+      if (id.startsWith("del_approve_") || id.startsWith("del_reject_") || id.startsWith("del_final_yes_") || id.startsWith("del_final_no_")) {
+        const { handleDeletionButton } = require("../komutlar/verisil");
+        return handleDeletionButton(interaction, interaction.client);
       }
 
       // --- Raid koruma butonları (Aç / Kapat) ---
@@ -316,15 +363,7 @@ module.exports = async (interaction) => {
             : "**250.000 RiseBunny Cash** — süresiz, hesap başına tek.\n\n**Nasıl kullanılır:**\n1️⃣ **risebunny.vercel.app**'e gir\n2️⃣ Sağ üstten **Discord ile giriş** yap\n3️⃣ **RiseBunny Bot → Hesabım & Mağaza** bölümünü aç\n4️⃣ Kupon kutusuna `RISE-V2` yaz");
         return interaction.reply({ embeds: [e], ephemeral: true }).catch(() => {});
       }
-      // --- Kupon silme menüsü (sahip paneli) ---
-      if (id.startsWith("kupon_sil_") && interaction.isStringSelectMenu && interaction.isStringSelectMenu()) {
-        const kod = (interaction.values[0] || "").replace("kupon_sil_", "");
-        const { SAHIP_ID } = require("../utils");
-        if (interaction.user.id !== SAHIP_ID) return interaction.reply({ content: "Yetkin yok.", ephemeral: true });
-        try { db.delete(`kupon_${kod}`); } catch {}
-        try { const l = db.get("kuponListesi") || []; db.set("kuponListesi", l.filter(k => k.kod !== kod)); } catch {}
-        return interaction.reply({ content: `Kupon \`${kod}\` silindi.`, ephemeral: true }).catch(() => {});
-      }
+      // (Not: kupon_sil_menu select'i yukarıdaki isStringSelectMenu bloğunda ele alınır.)
 
       // --- Kupon sil (sahip, eski buton yolu) ---
       if (id.startsWith("kupon_sil_")) {
