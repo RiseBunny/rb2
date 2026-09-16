@@ -258,7 +258,13 @@ const SHOP_CATALOG = {
   pet_balik:   { tip: "pet", pet: { name: "Balık", emoji: "🐠", rarity: "rare" }, fiyat: 162000, ad: "🐠 Balık" },
   pet_aslan:   { tip: "pet", pet: { name: "Aslan", emoji: "🦁", rarity: "premium" }, fiyat: 315000, ad: "🦁 Aslan", premiumGerek: true },
   pet_kaplan:  { tip: "pet", pet: { name: "Kaplan", emoji: "🐅", rarity: "premium" }, fiyat: 342000, ad: "🐅 Kaplan", premiumGerek: true },
-  paket_rastgele: { tip: "paket", fiyat: 150000, ad: "🎁 Rastgele Paket" }
+  paket_rastgele: { tip: "paket", fiyat: 150000, ad: "🎁 Rastgele Paket" },
+  // RiseBunny Launcher pelerinleri (ID'ler launcher preset ID'leriyle BİREBİR aynı olmalı)
+  minecon2011:   { tip: "cape", fiyat: 5000, ad: "🏛️ Minecon 2011 Pelerini" },
+  "bunny-neon":  { tip: "cape", fiyat: 8000, ad: "⚡ Bunny Neon Pelerini" },
+  anniversary15: { tip: "cape", fiyat: 12000, ad: "💚 15. Yıl Creeper Pelerini" },
+  "ender-heart": { tip: "cape", fiyat: 15000, ad: "💜 Ender Heart Pelerini" },
+  "bunny-gold":  { tip: "cape", fiyat: 20000, ad: "🐰 Bunny Gold Pelerini", premiumGerek: true }
 };
 // Efektif ürün: varsayılan + sahip geçersiz kılmaları (magaza_<id> = {fiyat, gorunur})
 function _magaza(id) {
@@ -337,6 +343,10 @@ app.post("/api/shop/buy", _botAuth, express.json(), async (req, res) => {
       U.addPremium(id, item.gun * 24 * 60 * 60 * 1000);
       dmBaslik = "🎉 Tebrikler! Premium Aktif";
       dmMetin = `**${item.ad}** aldınız, premiumunuz **${item.gun} gün** aktif! İyi eğlenceler! 💎`;
+    } else if (item.tip === "cape") {
+      // Launcher pelerini: sahiplik launcher'da tutulur, bota sadece para düşer + DM gider
+      dmBaslik = "🎉 Tebrikler! Pelerin Aldın";
+      dmMetin = `**${item.ad}** aldınız! Launcher'da Profiller & skinler → mağazadan kuşanabilirsiniz. 🧥`;
     } else {
       _petVer(id, item.pet);
       dmBaslik = "🎉 Tebrikler! Pet Sahiplendin";
