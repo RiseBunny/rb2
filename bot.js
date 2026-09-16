@@ -240,12 +240,13 @@ app.get("/api/user/:id", _botAuth, async (req, res) => {
       try { username = (await client.users.fetch(id).catch(() => null))?.username || null; } catch {}
     }
     res.json({
-      id, username,
-      wallet, bank, total: wallet + bank,
-      xp, level: U.xpSeviye(xp),
-      premium: { active: U.isPremium(id), daysLeft: prem > Date.now() ? Math.ceil((prem - Date.now()) / 86400000) : 0 },
-      pets: Array.isArray(pets) ? pets.map(p => ({ name: p.name, emoji: p.emoji })) : []
-    });
+  id, username,
+  wallet, bank, total: wallet + bank,
+  xp, level: U.xpSeviye(xp),
+  premium: { active: U.isPremium(id), daysLeft: prem > Date.now() ? Math.ceil((prem - Date.now()) / 86400000) : 0 },
+  pets: Array.isArray(pets) ? pets.map(p => ({ name: p.name, emoji: p.emoji })) : [],
+  capes: db.fetch(`launcher_capes_${id}`) || []  // ✅ YENİ
+});
   } catch (e) { res.status(500).json({ error: "hata" }); }
 });
 
@@ -316,6 +317,13 @@ app.post("/api/shop/buy", _botAuth, express.json(), async (req, res) => {
     const item = _magaza(req.body?.item);
     if (!id || !item) return res.status(400).json({ error: "geçersiz istek" });
     if (!item.gorunur) return res.status(403).json({ error: "Bu ürün şu an satışta değil." });
+    // ✅ CAPE SAHİPLİK KONTROLÜ (ödeme öncesi)
+if (item.tip === "cape") {
+  const owned = db.fetch(`launcher_capes_${id}`) || [];
+  if (Array.isArray(owned) && owned.includes(req.body.item)) {
+    return res.status(409).json({ error: "Bu pelerine zaten sahipsin." });
+  }
+}
     if (item.premiumGerek && !U.isPremium(id)) return res.status(403).json({ error: "Bu pet için premium gerekli." });
     if (item.tip === "premium" && U.isPremium(id)) return res.status(403).json({ error: "Zaten premiumsun — süren bitince yenileyebilirsin." });
     // Ödeme: önce cüzdan, kalan bankadan
@@ -343,10 +351,15 @@ app.post("/api/shop/buy", _botAuth, express.json(), async (req, res) => {
       U.addPremium(id, item.gun * 24 * 60 * 60 * 1000);
       dmBaslik = "🎉 Tebrikler! Premium Aktif";
       dmMetin = `**${item.ad}** aldınız, premiumunuz **${item.gun} gün** aktif! İyi eğlenceler! 💎`;
-    } else if (item.tip === "cape") {
-      // Launcher pelerini: sahiplik launcher'da tutulur, bota sadece para düşer + DM gider
+   } else if (item.tip === "cape") {
+      // ✅ CAPE SAHİPLİK KAYDI
+      const owned = db.fetch(`launcher_capes_${id}`) || [];
+      if (!owned.includes(req.body.item)) {
+        owned.push(req.body.item);
+        db.set(`launcher_capes_${id}`, owned);
+      }
       dmBaslik = "🎉 Tebrikler! Pelerin Aldın";
-      dmMetin = `**${item.ad}** aldınız! Launcher'da Profiller & skinler → mağazadan kuşanabilirsiniz. 🧥`;
+      dmMetin = `**${item.ad}** aldınız! Launcher'da **B** tuşuyla açılan menüden kuşanabilirsiniz. 🧥`;
     } else {
       _petVer(id, item.pet);
       dmBaslik = "🎉 Tebrikler! Pet Sahiplendin";
