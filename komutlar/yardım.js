@@ -7,7 +7,34 @@ const GIZLI = new Set(["yardim"]);
 
 /** Kategorideki komutları o dilde listeler. */
 function kategoriListesi(client, lang, katId) {
+  const EN = lang === "en";
   const satirlar = [];
+
+  /* SAHİP kategorisi: listeyi elle tutmak yerine gerçek komutlardan türet.
+     Böylece sahip-only (permLevel 5) her komut + sözlükte "sahip" işaretli
+     komutlar eksiksiz görünür. */
+  if (katId === "sahip") {
+    const eklenen = new Set();
+    const ekle = (canonical, cmd) => {
+      if (eklenen.has(canonical)) return;
+      eklenen.add(canonical);
+      const b = komutBilgi(lang, canonical);
+      const kapali = cmd && cmd.conf && cmd.conf.enabled === false ? (EN ? " (disabled)" : " (kapalı)") : "";
+      satirlar.push(`\`${PREFIX}${komutAdi(lang, canonical)}\`${kapali} — ${b.aciklama || "-"}`);
+    };
+    /* 1) Sahip-only komutlar (komut dosyasındaki permLevel: 5) */
+    for (const [canonical, cmd] of client.commands) {
+      if (cmd && cmd.conf && cmd.conf.permLevel === 5) ekle(canonical, cmd);
+    }
+    /* 2) Sözlükte "sahip" kategorisinde işaretli komutlar */
+    for (const [canonical, bilgi] of Object.entries(KOMUTLAR)) {
+      if (bilgi.kat !== "sahip") continue;
+      const cmd = client.commands.get(canonical);
+      if (cmd) ekle(canonical, cmd);
+    }
+    return satirlar;
+  }
+
   for (const [canonical] of Object.entries(KOMUTLAR)) {
     const bilgi = KOMUTLAR[canonical];
     if (bilgi.kat !== katId) continue;
