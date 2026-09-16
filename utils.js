@@ -57,6 +57,26 @@ function removePremium(userId) {
     if (typeof db.delete === "function") db.delete(`premium_${userId}`);
     else db.set(`premium_${userId}`, null);
   } catch {}
+  /* KRITIK: Eski sistem kaydı (ayarlar.json -> premiumIDs) de temizlenmeli.
+     Aksi halde isPremium() listeyi görüp 30 günlük premiumu yeniden yazıyor
+     ve "premium sil" işlemi hiç işe yaramıyordu. */
+  try {
+    const fs = require("fs");
+    const path = require("path");
+    const yol = path.join(__dirname, "ayarlar.json");
+    const ayarlar = JSON.parse(fs.readFileSync(yol, "utf8"));
+    if (Array.isArray(ayarlar.premiumIDs)) {
+      const hedef = String(userId);
+      const yeni = ayarlar.premiumIDs.filter(x => String(x) !== hedef);
+      if (yeni.length !== ayarlar.premiumIDs.length) {
+        ayarlar.premiumIDs = yeni;
+        fs.writeFileSync(yol, JSON.stringify(ayarlar, null, 2));
+        /* Bellekteki kopya da güncellenmeli, yoksa legacyPremiumIDs() eski
+           listeyi okumaya devam eder. */
+        _ayarlar.premiumIDs = yeni;
+      }
+    }
+  } catch {}
 }
 
 function premiumKalan(userId) {
@@ -501,8 +521,102 @@ async function checkAndGiveLevelRole(client, userId) {
   }
 }
 
+/* ── Bot tarafı Firestore silme ────────────────────────────────────────────
+   Veri silme talebi sahip tarafından KABUL edildiğinde kullanıcının forum
+   içeriklerini (konu/yanıt/bildirim/hesap) bot hesabıyla siler. Bot hesabı
+   yetkili değilse (rules yayınlanmamış) sessizce başarısız olur ve çağıran
+   taraf kullanıcıyı siteye yönlendirir. */
+const FB_PROJE = "gen-lang-client-0590499912";
+const FB_ANAHTAR = process.env.FIREBASE_API_KEY || "AIzaSyAq5Nafl9aI2TabzGsj5J9ij6lNwyfTguM";
+const SILINECEK_KOLEKSIYONLAR = [
+  { ad: "threads", alan: "authorId", etiket: "forum konusu" },
+  { ad: "posts", alan: "authorId", etiket: "forum yanıtı" },
+  { ad: "notifications", alan: "userId", etiket: "bildirim" }
+];
+let _silToken = null, _silTokenExp = 0;
+async function _silTokenAl() {
+  if (_silToken && Date.now() < _silTokenExp - 60000) return _silToken;
+  const email = process.env.FIREBASE_BOT_EMAIL || "", sifre = process.env.FIREBASE_BOT_SIFRE || "";
+  if (!email || !sifre) return null;
+  try {
+    const r = await fetch(
+      "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=" + FB_ANAHTAR,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password: sifre, returnSecureToken: true })
+      }
+    );
+    if (!r.ok) return null;
+    const j = await r.json();
+    _silToken = j.idToken;
+    _silTokenExp = Date.now() + (Number(j.expiresIn) || 3600) * 1000;
+    return _silToken;
+  } catch { return null; }
+}
+async function _fbDokumanBul(tok, koleksiyon, alan, uid) {
+  try {
+    const r = await fetch(
+      `https://firestore.googleapis.com/v1/projects/${FB_PROJE}/databases/(default)/documents:runQuery?key=${FB_ANAHTAR}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + tok },
+        body: JSON.stringify({
+          structuredQuery: {
+            from: [{ collectionId: koleksiyon }],
+            where: {
+              fieldFilter: {
+                field: { fieldPath: alan },
+                op: "EQUAL",
+                value: { stringValue: String(uid) }
+              }
+            },
+            limit: 300
+          }
+        })
+      }
+    );
+    if (!r.ok) return [];
+    const j = await r.json().catch(() => []);
+    return (Array.isArray(j) ? j : [])
+      .map(x => x && x.document && x.document.name)
+      .filter(Boolean);
+  } catch { return []; }
+}
+/** Kullanıcının site (Firestore) verilerini siler. */
+async function firestoreSil(uid, ekstra = []) {
+  const kimlik = String(uid || "").replace(/\D/g, "").slice(0, 25);
+  const cikti = { ok: false, silinen: 0, detay: [] };
+  if (!kimlik) return cikti;
+  const tok = await _silTokenAl();
+  if (!tok) { cikti.detay.push("bot firebase girişi yok"); return cikti; }
+  for (const k of SILINECEK_KOLEKSIYONLAR) {
+    const adlar = await _fbDokumanBul(tok, k.ad, k.alan, kimlik);
+    let sayi = 0;
+    for (const ad of adlar) {
+      const r = await fetch(`https://firestore.googleapis.com/v1/${ad}?key=${FB_ANAHTAR}`, {
+        method: "DELETE",
+        headers: { Authorization: "Bearer " + tok }
+      }).catch(() => null);
+      if (r && r.ok) sayi++;
+    }
+    if (sayi) cikti.detay.push(`${k.etiket}: ${sayi}`);
+    cikti.silinen += sayi;
+  }
+  for (const ek of ekstra) {
+    const r = await fetch(
+      `https://firestore.googleapis.com/v1/projects/${FB_PROJE}/databases/(default)/documents/${ek}?key=${FB_ANAHTAR}`,
+      { method: "DELETE", headers: { Authorization: "Bearer " + tok } }
+    ).catch(() => null);
+    if (r && r.ok) { cikti.silinen++; cikti.detay.push(`${ek} silindi`); }
+  }
+  cikti.ok = cikti.silinen > 0;
+  return cikti;
+}
+
 module.exports = {
   db,
+  firestoreSil,
   DESTEK,
   SITE_MAGAZA,
   satisDuyuruSatir,
