@@ -15,6 +15,7 @@ const KOMUTLAR = {
   "afk": { kat: "kullanici", en: "afk", enAlias: ["brb"] },
   "atatürk": { kat: "eglence", en: "atatuerk", enAlias: ["ataturk"] },
   "pp": { kat: "kullanici", en: "avatar", enAlias: ["pfp"] },
+  "bug": { kat: "genel", en: "bug", enAlias: ["bugreport"] },
   "bakım": { kat: "sahip", en: "maintenance", enAlias: ["maintain"] },
   "mağaza-yönet": { kat: "sahip", en: "shop-manage", enAlias: ["shopmanage"] },
   "yedek": { kat: "sahip", en: "backup", enAlias: ["yedek-al"] },

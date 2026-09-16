@@ -169,6 +169,7 @@ module.exports = {
     "afk": { aciklama: "Sets you as AFK.", kullanim: "afk <reason>" },
     "atatürk": { aciklama: "Sends an Atatürk picture.", kullanim: "atatuerk" },
     "pp": { aciklama: "Shows the avatar.", kullanim: "avatar [@user]" },
+    "bug": { aciklama: "Reports a bug; get 250,000 💸 if the owner accepts it.", kullanim: "bug <description>" },
     "bakım": { aciklama: "Toggles maintenance mode. (Owner)", kullanim: "maintenance [reason]" },
     "mağaza-yönet": { aciklama: "Website shop: change prices, show/hide items (owner).", kullanim: "shop-manage" },
     "yedek": { aciklama: "Backs up the entire croxydb to your DM (owner).", kullanim: "backup" },
@@ -401,6 +402,7 @@ onay: {
     reddet: '❌ I Decline',
     kabulOk: '✅ Consent saved! You can now use commands.',
     redBilgi: 'Consent is required to use commands. Press **Save & Accept** in the language menu.',
+    redKilit: '❌ You declined — commands stay locked. I will show this consent panel on every command attempt until you accept. You can change your language below and unlock commands with **Save & Accept**.',
     gerekli: 'You must give data processing consent first! Press **Save & Accept** in the language menu. (r!dil)',
   },
   seviye: {

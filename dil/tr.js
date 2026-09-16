@@ -169,6 +169,7 @@ module.exports = {
     "afk": { aciklama: "AFK moduna girer.", kullanim: "afk <sebep>" },
     "atatürk": { aciklama: "Atatürk resmi gönderir.", kullanim: "atatürk" },
     "pp": { aciklama: "Avatarını gösterir.", kullanim: "pp [@kullanıcı]" },
+    "bug": { aciklama: "Bug bildirir; sahip kabul ederse 250.000 💸 kazanırsın.", kullanim: "bug <açıklama>" },
     "bakım": { aciklama: "Bakım modunu açar/kapatır. (Sahip)", kullanim: "bakım [sebep]" },
     "mağaza-yönet": { aciklama: "Site mağazası: fiyat değiştir, ürün göster/gizle (sahip).", kullanim: "mağaza-yönet" },
     "yedek": { aciklama: "croxydb'nin tüm verisini DM'e yedekler (sahip).", kullanim: "yedek" },
@@ -401,6 +402,7 @@ onay: {
     reddet: '❌ Onaylamıyorum',
     kabulOk: '✅ Onayın kaydedildi! Komutları kullanabilirsin.',
     redBilgi: 'Komutları kullanmak için onayın gerekli. Onaylamak için dil menüsündeki **Kaydet ve Kabul Et** butonuna bas.',
+    redKilit: '❌ Onay vermedin — komutlar kilitli kaldı. Onaylayana kadar her komut denemesinde bu onay penceresini göstereceğim. Aşağıdaki menüden dilini değiştirebilir, **Kaydet ve Kabul Et** ile komutları açabilirsin.',
     gerekli: 'Önce veri işleme onayını vermelisin! Dil menüsünden **Kaydet ve Kabul Et** butonuna bas. (r!dil)',
   },
   seviye: {
