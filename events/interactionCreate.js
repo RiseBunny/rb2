@@ -182,7 +182,19 @@ module.exports = async (interaction) => {
           return interaction.reply({ content: t(ulang, "onay.kabulOk"), ephemeral: true });
         }
         setConsent(interaction.user.id, false);
-        return interaction.reply({ content: t(ulang, "onay.redBilgi"), ephemeral: true });
+        /* Onay verilmediği sürece komutlar kilitli kalır; panel tekrar sunulur. */
+        try {
+          const { dilPaneli } = require("../komutlar/dil");
+          const { PREFIX } = require("../utils");
+          await interaction.reply({
+            content: t(ulang, "onay.redKilit"),
+            ...dilPaneli(process.env.PREFIX || PREFIX, { isOwner: false, userNeedsLang: false, guildNeedsLang: false }),
+            ephemeral: true
+          }).catch(() => {});
+        } catch {
+          await interaction.reply({ content: t(ulang, "onay.redBilgi"), ephemeral: true }).catch(() => {});
+        }
+        return undefined;
       }
 
       // --- Veri silme talebi butonları (sahip onayı + kullanıcı son onayı) ---
@@ -401,6 +413,43 @@ module.exports = async (interaction) => {
         return interaction.update({ content: "İşlem iptal edildi.", embeds: [], components: [] }).catch(() => {});
       }
 
+      // --- Bug bildirimi: sahip kabul (250k ödül + teşekkür DM'i) / red (hiçbir şey) ---
+      if (id.startsWith("bug_kabul_") || id.startsWith("bug_red_")) {
+        const { SAHIP_ID } = require("../utils");
+        const bLang = await getLang(interaction.user.id);
+        const bEN = bLang === "en";
+        if (interaction.user.id !== SAHIP_ID) {
+          return interaction.reply({ content: bEN ? "Owner only." : "Bu işlemi sadece sahip yapabilir.", ephemeral: true }).catch(() => {});
+        }
+        const kayitId = id.split("_").slice(2).join("_");
+        const kayit = db.fetch(`bug_${kayitId}`);
+        if (!kayit) return interaction.reply({ content: bEN ? "Report not found." : "Bildirim bulunamadı.", ephemeral: true }).catch(() => {});
+        if (kayit.durum !== "bekliyor") {
+          return interaction.reply({ content: bEN ? "This report is already resolved." : "Bu bildirim zaten sonuçlandırıldı.", ephemeral: true }).catch(() => {});
+        }
+        const bugMod = require("../komutlar/bug");
+        const kabul = id.startsWith("bug_kabul_");
+        if (kabul) {
+          const odul = Number(bugMod.BUG_ODUL) || 250000;
+          db.add(`para_${kayit.userId}`, odul);
+          db.set(`bug_${kayitId}`, { ...kayit, durum: "kabul", odul, sonuclanmaAt: Date.now(), kararVeren: interaction.user.id });
+          try {
+            const u = await interaction.client.users.fetch(String(kayit.userId).replace(/\D/g, "")).catch(() => null);
+            if (u) {
+              await u.send({ embeds: [new EmbedBuilder().setColor("Green")
+                .setTitle("🐞 Bug bildirimin kabul edildi!")
+                .setDescription(`Teşekkürler! **${odul.toLocaleString()} 💸** bakiyene eklendi.\n\n**Bildirimin:**\n${String(kayit.aciklama).slice(0, 1000)}`)
+                .setFooter({ text: "RiseBunny • bug" }).setTimestamp()] }).catch(() => {});
+            }
+          } catch {}
+          ownerLog(interaction.client, `✅ **Bug kabul edildi:** \`${kayitId}\` (<@${kayit.userId}>) — +${odul.toLocaleString()} 💸`).catch(() => {});
+        } else {
+          db.set(`bug_${kayitId}`, { ...kayit, durum: "red", sonuclanmaAt: Date.now(), kararVeren: interaction.user.id });
+          ownerLog(interaction.client, `✖️ **Bug reddedildi:** \`${kayitId}\` (<@${kayit.userId}>)`).catch(() => {});
+        }
+        return interaction.update({ embeds: [bugMod.bugEmbed(kayit, bLang, kabul ? "kabul" : "red")], components: [] }).catch(() => {});
+      }
+
       // --- Veri silme talebi: sahip onayı (emin misin) / reddi (sebepli) ---
       const SILME_YETKI = [require("../utils").SAHIP_ID, "1310366324731547798"];
       if (id.startsWith("sil_onay_") || id.startsWith("sil_evet_") || id.startsWith("sil_red_") || id === "sil_vazgec") {
@@ -456,16 +505,32 @@ module.exports = async (interaction) => {
               }
             } catch {}
           } catch {}
-          db.set(`silme_${docId}`, { ...rec, durum: "onaylandi", sebep: "" });
-          const kapsam = rec.kapsam || "ikisi";
+          const kapsam0 = rec.kapsam || "ikisi";
+          /* Site (Firestore) verileri: bot hesabı yetkiliyse doğrudan silinir,
+             değilse kullanıcıya site üzerinden tamamlama adımı anlatılır. */
+          let siteSonuc = { ok: false, silinen: 0, detay: [] };
+          if (kapsam0 === "site" || kapsam0 === "ikisi") {
+            try {
+              const U = require("../utils");
+              siteSonuc = await U.firestoreSil(uid, [`users/${uid}`]);
+            } catch (e) { siteSonuc = { ok: false, silinen: 0, detay: [String(e.message || e)] }; }
+          }
+          db.set(`silme_${docId}`, { ...rec, durum: "onaylandi", sebep: "", siteSilinen: siteSonuc.silinen });
+          const kapsam = kapsam0;
+          const siteSatir = kapsam === "bot"
+            ? ""
+            : siteSonuc.ok
+              ? `\n🌐 **Site verilerin silindi** (${siteSonuc.silinen} kayıt${siteSonuc.detay.length ? ": " + siteSonuc.detay.join(", ") : ""}).`
+              : "\n🌐 **Site verilerin:** sitedeki Hesabım → Veri silme bölümüne girip son onayı ver (tek tık). Bot tarafında otomatik silme yetkisi kapalı.";
           try {
             const u = await interaction.client.users.fetch(uid).catch(() => null);
             if (u) await u.send({ embeds: [new EmbedBuilder().setColor("Green").setTitle("✅ Veri Silme Talebin Kabul Edildi")
-              .setDescription(`**Kapsam:** ${kapsam}\n**Bot verilerin silindi** (${n} kayıt).` + (kapsam === "bot" ? "" : "\n🌐 **Site verilerin:** sitedeki Hesabım bölümünden silme işlemini tamamla (onay sonrası otomatik açılır)."))
+              .setDescription(`**Kapsam:** ${kapsam === "ikisi" ? "Bot + Site" : kapsam === "bot" ? "Sadece Bot" : "Sadece Site"}\n**Bot verilerin silindi** (${n} kayıt).` + siteSatir)
+              .setFooter({ text: "RiseBunny • veri silme" })
               .setTimestamp()] }).catch(() => {});
           } catch {}
-          ownerLog(interaction.client, `🗑️ **Silme onaylandı:** \`${docId}\` (<@${uid}>) — ${n} bot kaydı silindi, kapsam: ${kapsam}`).catch(() => {});
-          return interaction.reply({ content: `✅ İşlendi: ${n} bot kaydı silindi.`, ephemeral: true }).catch(() => {});
+          ownerLog(interaction.client, `🗑️ **Silme onaylandı:** \`${docId}\` (<@${uid}>) — ${n} bot kaydı, ${siteSonuc.silinen} site kaydı silindi, kapsam: ${kapsam}`).catch(() => {});
+          return interaction.reply({ content: `✅ İşlendi: ${n} bot + ${siteSonuc.silinen} site kaydı silindi.`, ephemeral: true }).catch(() => {});
         }
       }
 
