@@ -12,7 +12,12 @@ const VARSAYILAN = {
   pet_balik:   { ad: "🐠 Balık", fiyat: 162000 },
   pet_aslan:   { ad: "🦁 Aslan", fiyat: 315000 },
   pet_kaplan:  { ad: "🐅 Kaplan", fiyat: 342000 },
-  paket_rastgele: { ad: "🎁 Rastgele Paket", fiyat: 150000 }
+  paket_rastgele: { ad: "🎁 Rastgele Paket", fiyat: 150000 },
+  minecon2011:   { ad: "🏛️ Minecon 2011 Pelerini", fiyat: 100000 },
+  "bunny-neon":  { ad: "⚡ Bunny Neon Pelerini", fiyat: 200000 },
+  anniversary15: { ad: "💚 15. Yıl Creeper Pelerini", fiyat: 300000 },
+  "ender-heart": { ad: "💜 Ender Heart Pelerini", fiyat: 400000 },
+  "bunny-gold":  { ad: "🐰 Bunny Gold Pelerini", fiyat: 500000 }
 };
 
 function liste() {
@@ -108,5 +113,5 @@ exports.run = async (client, message) => {
   col.on("end", async () => { await panel.edit({ components: [] }).catch(() => {}); });
 };
 
-exports.conf = { enabled: true, guildOnly: false, aliases: ["mağaza-ayarla", "magaza"], permLevel: 4, kategori: "sahip" };
+exports.conf = { enabled: true, guildOnly: false, aliases: ["mağaza-ayarla", "magaza"], permLevel: 5, kategori: "sahip" };
 exports.help = { name: "mağaza-yönet", description: "Site mağazası: fiyat + görünürlük (sahip).", usage: "mağaza-yönet" };
