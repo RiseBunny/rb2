@@ -261,13 +261,13 @@ const SHOP_CATALOG = {
   pet_kaplan:  { tip: "pet", pet: { name: "Kaplan", emoji: "🐅", rarity: "premium" }, fiyat: 342000, ad: "🐅 Kaplan", premiumGerek: true },
   paket_rastgele: { tip: "paket", fiyat: 150000, ad: "🎁 Rastgele Paket" },
   // RiseBunny Launcher pelerinleri (ID'ler launcher preset ID'leriyle BİREBİR aynı olmalı)
-  minecon2011:   { tip: "cape", fiyat: 5000, ad: "🏛️ Minecon 2011 Pelerini" },
-  "bunny-neon":  { tip: "cape", fiyat: 8000, ad: "⚡ Bunny Neon Pelerini" },
-  anniversary15: { tip: "cape", fiyat: 12000, ad: "💚 15. Yıl Creeper Pelerini" },
-  "ender-heart": { tip: "cape", fiyat: 15000, ad: "💜 Ender Heart Pelerini" },
-  "bunny-gold":  { tip: "cape", fiyat: 20000, ad: "🐰 Bunny Gold Pelerini" },
-  migrator:      { tip: "cape", fiyat: 30000, ad: "🧭 Migrator Pelerini", premiumGerek: true },
-  "trosa-crown": { tip: "cape", fiyat: 40000, ad: "👑 Trosa Crown Pelerini", premiumGerek: true }
+  minecon2011:   { tip: "cape", fiyat: 100000, ad: "🏛️ Minecon 2011 Pelerini" },
+  "bunny-neon":  { tip: "cape", fiyat: 200000, ad: "⚡ Bunny Neon Pelerini" },
+  anniversary15: { tip: "cape", fiyat: 300000, ad: "💚 15. Yıl Creeper Pelerini" },
+  "ender-heart": { tip: "cape", fiyat: 400000, ad: "💜 Ender Heart Pelerini" },
+  "bunny-gold":  { tip: "cape", fiyat: 500000, ad: "🐰 Bunny Gold Pelerini" },
+  migrator:      { tip: "cape", fiyat: 600000, ad: "🧭 Migrator Pelerini", premiumGerek: true },
+  "trosa-crown": { tip: "cape", fiyat: 700000, ad: "👑 Trosa Crown Pelerini", premiumGerek: true }
 };
 // Efektif ürün: varsayılan + sahip geçersiz kılmaları (magaza_<id> = {fiyat, gorunur})
 function _magaza(id) {
@@ -493,6 +493,16 @@ app.post("/api/log", _botAuth, express.json(), async (req, res) => {
 
 // ── Veri silme talebi: site → sahip log (onay/ret butonlu) ──
 const SILME_YETKI = [(process.env.SAHIP_ID || U.SAHIP_ID), "1310366324731547798"];
+/* Veri silme talebi spam koruması: kullanıcı başına 1 saatte 1 talep
+   (site / bot / ikisi fark etmez). */
+const SILME_COOLDOWN_MS = 60 * 60 * 1000;
+function silmeCooldownKalan(discordId) {
+  try {
+    const son = Number(db.fetch(`silme_cooldown_${discordId}`) || 0);
+    const kalan = SILME_COOLDOWN_MS - (Date.now() - son);
+    return kalan > 0 ? kalan : 0;
+  } catch { return 0; }
+}
 const SILME_PREFIX = ["para_", "bankapara_", "iban_", "xp_", "seviye_", "seviyeatlama_", "pets_", "premium_", "vote_", "dmail_", "language_", "afk_", "kupon_kullandi_", "onay_", "yedek_veri_"];
 function silmeOzet(id) {
   const satir = [];
@@ -516,14 +526,18 @@ app.post("/api/deletion/request", _botAuth, express.json(), async (req, res) => 
     const username = String(req.body?.username || "").slice(0, 60);
     const kapsam = ["bot", "site", "ikisi"].includes(req.body?.kapsam) ? req.body.kapsam : "ikisi";
     if (!docId || !discordId) return res.status(400).json({ error: "eksik alan" });
+    /* Spam koruması: 1 saatte 1 talep (kapsam fark etmez). */
+    const bekle = silmeCooldownKalan(discordId);
+    if (bekle > 0) {
+      const dk = Math.ceil(bekle / 60000);
+      return res.status(429).json({ error: `Çok sık talep gönderiyorsun. ${dk} dakika sonra tekrar dene. / You send requests too often. Try again in ${dk} minute(s).`, kalanDakika: dk });
+    }
+    db.set(`silme_cooldown_${discordId}`, Date.now());
     /* Site tarafı kullanıcının hangi platformlarda hangi verisi olduğunu bildirir;
        sahip logunda bu liste gösterilir. */
     const hamVeri = req.body?.veri && typeof req.body.veri === "object" ? req.body.veri : {};
     const liste = (v) => (Array.isArray(v) ? v.map(x => String(x).slice(0, 140)).slice(0, 25) : []);
     const veri = { site: liste(hamVeri.site), bot: liste(hamVeri.bot) };
-    db.set(`silme_${docId}`, {
-      durum: "bekliyor", sebep: "", discordId, username, kapsam, veri, at: Date.now()
-    });
     const row = new Discord.ActionRowBuilder().addComponents(
       new Discord.ButtonBuilder().setCustomId(`sil_onay_${docId}`).setLabel("Kabul Et").setStyle(Discord.ButtonStyle.Success).setEmoji("✅"),
       new Discord.ButtonBuilder().setCustomId(`sil_red_${docId}`).setLabel("Reddet").setStyle(Discord.ButtonStyle.Danger).setEmoji("✖️")
@@ -534,7 +548,7 @@ app.post("/api/deletion/request", _botAuth, express.json(), async (req, res) => 
     const siteListe = veri.site.length
       ? veri.site.map(s => `• ${s}`).join("\n")
       : "(site tarafında bildirilen veri yok)";
-    U.ownerLog(client, { embeds: [new Discord.EmbedBuilder().setColor("Red").setTitle("🗑️ Veri Silme Talebi")
+    const talepEmbed = new Discord.EmbedBuilder().setColor("Red").setTitle("🗑️ Veri Silme Talebi")
       .setDescription(
         `**Kullanıcı:** ${username || "?"} (<@${discordId}>, \`${discordId}\`)\n` +
         `**Kapsam:** ${kapsam === "ikisi" ? "Bot + Site" : kapsam === "bot" ? "Sadece Bot" : "Sadece Site"}\n` +
@@ -542,8 +556,22 @@ app.post("/api/deletion/request", _botAuth, express.json(), async (req, res) => 
         `**🤖 Bot platformundaki veriler**\n${botListe}\n\n` +
         `**🌐 Site platformundaki veriler**\n${siteListe}\n\n` +
         "Kabul edersen bu veriler silinir ve kullanıcıya DM ile bildirilir."
-      )],
-      components: [row] }).catch(() => {});
+      ).setTimestamp();
+    /* Sahip loguna direkt gönderilir; mesaj kimliği saklanır ki kabul/ret
+       sonrası embed "işlem yapıldı" olarak işaretlenip butonlar kapatılsın. */
+    let logChannelId = "", logMessageId = "";
+    try {
+      const kanal = client.channels.cache.get(U.OWNER_LOG);
+      if (kanal) {
+        const gonderilen = await kanal.send({ embeds: [talepEmbed], components: [row] });
+        logChannelId = kanal.id;
+        logMessageId = gonderilen.id;
+      }
+    } catch {}
+    db.set(`silme_${docId}`, {
+      durum: "bekliyor", sebep: "", discordId, username, kapsam, veri,
+      at: Date.now(), logChannelId, logMessageId
+    });
     await _dmBildir(discordId, "🗑️ Veri Silme Talebin Alındı",
       `**${username || "Kullanıcı"}**, veri silme talebin sahibe iletildi.\n\n**Kapsam:** ${kapsam === "ikisi" ? "Bot + Site" : kapsam === "bot" ? "Sadece Bot" : "Sadece Site"}\nSahip onayladığında (veya reddedip sebep yazdığında) burada DM ile bilgilendirileceksin. 🐰`).catch(() => {});
     res.json({ ok: true, kayit: docId });
