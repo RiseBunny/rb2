@@ -95,7 +95,9 @@ module.exports = async message => {
   if (cmd.conf.permLevel === 5 && message.author.id !== SAHIP_ID)
     return yetkiHata(t(lang, "ortak.sahipSadece"));
 
-  if (perms < cmd.conf.permLevel) return;
+  /* Buraya takılan komut eskiden hiçbir cevap vermeden susuyordu
+     (sahip bile r!presil çalıştıramıyordu). Artık sebep bildirilir. */
+  if (perms < cmd.conf.permLevel) return yetkiHata(t(lang, "ortak.yetki", { yetki: "Daha yüksek yetki" }));
 
   try {
     await cmd.run(client, message, params, perms);
