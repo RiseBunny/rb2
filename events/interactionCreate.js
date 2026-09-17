@@ -452,6 +452,37 @@ module.exports = async (interaction) => {
 
       // --- Veri silme talebi: sahip onayı (emin misin) / reddi (sebepli) ---
       const SILME_YETKI = [require("../utils").SAHIP_ID, "1310366324731547798"];
+      /* Sahip logundaki talep embedini "işlem yapıldı" olarak işaretler ve
+         butonları kapatır — aynı talep iki kez işlenemez. */
+      const silmeLogunuIsle = async (cli, rec, docId, sonuc, sebep, isleyen) => {
+        try {
+          const kanalId = String((rec && rec.logChannelId) || "");
+          const mesajId = String((rec && rec.logMessageId) || "");
+          let kanal = kanalId ? cli.channels.cache.get(kanalId) : null;
+          if (!kanal && kanalId) kanal = await cli.channels.fetch(kanalId).catch(() => null);
+          if (!kanal) {
+            const U2 = require("../utils");
+            kanal = cli.channels.cache.get(U2.OWNER_LOG) || await cli.channels.fetch(U2.OWNER_LOG).catch(() => null);
+          }
+          if (!kanal || !mesajId) return false;
+          const msg = await kanal.messages.fetch(mesajId).catch(() => null);
+          if (!msg) return false;
+          const eski = (msg.embeds && msg.embeds[0]) || null;
+          const e = new EmbedBuilder()
+            .setColor(sonuc === "kabul" ? "Green" : "Red")
+            .setTitle(sonuc === "kabul" ? "✅ İşlem yapıldı (kabul edildi)" : "❌ İşlem yapıldı (reddedildi)")
+            .setDescription(((eski && eski.description) || `Talep: \`${docId}\``).slice(0, 3500))
+            .addFields(
+              { name: "Talep", value: `\`${docId}\``, inline: true },
+              { name: "Kapsam", value: rec.kapsam === "ikisi" ? "Bot + Site" : rec.kapsam === "bot" ? "Sadece Bot" : "Sadece Site", inline: true },
+              { name: "Sonuç", value: sonuc === "kabul" ? "Kabul — veriler silindi, kullanıcıya DM atıldı." : `Ret — sebep: ${String(sebep || "Belirtilmedi").slice(0, 200)}`, inline: false },
+            )
+            .setFooter({ text: `İşleyen: ${isleyen || "?"} • ${new Date().toLocaleString("tr-TR")}` })
+            .setTimestamp();
+          await msg.edit({ embeds: [e], components: [] }).catch(() => {});
+          return true;
+        } catch { return false; }
+      };
       if (id.startsWith("sil_onay_") || id.startsWith("sil_evet_") || id.startsWith("sil_red_") || id === "sil_vazgec") {
         if (!SILME_YETKI.includes(interaction.user.id))
           return interaction.reply({ content: "Yetkin yok.", ephemeral: true }).catch(() => {});
@@ -468,6 +499,11 @@ module.exports = async (interaction) => {
           return interaction.reply({ content: "Vazgeçildi.", ephemeral: true }).catch(() => {});
         }
         if (id.startsWith("sil_red_")) {
+          const mevcut = db.fetch(`silme_${docId}`) || {};
+          if (mevcut.durum && mevcut.durum !== "bekliyor") {
+            await silmeLogunuIsle(interaction.client, mevcut, docId, mevcut.durum === "onaylandi" ? "kabul" : "red", mevcut.sebep, interaction.user.tag);
+            return interaction.reply({ content: "Bu talep zaten işlenmiş.", ephemeral: true }).catch(() => {});
+          }
           await interaction.reply({ content: "Red sebebini 60 sn içinde yaz:", ephemeral: true }).catch(() => {});
           const top = await interaction.channel.awaitMessages({ filter: (m) => SILME_YETKI.includes(m.author.id), max: 1, time: 60000 }).catch(() => null);
           const sebep = top?.first?.()?.content?.trim().slice(0, 300) || "Belirtilmedi";
@@ -479,11 +515,16 @@ module.exports = async (interaction) => {
             if (u) await u.send({ embeds: [new EmbedBuilder().setColor("Red").setTitle("❌ Veri Silme Talebin Reddedildi")
               .setDescription(`**Sebep:** ${sebep}`).setTimestamp()] }).catch(() => {});
           } catch {}
+          await silmeLogunuIsle(interaction.client, rec, docId, "red", sebep, interaction.user.tag);
           ownerLog(interaction.client, `❌ **Silme talebi reddedildi:** \`${docId}\` — Sebep: ${sebep}`).catch(() => {});
           return interaction.followUp({ content: "Reddedildi + kullanıcıya DM atıldı.", ephemeral: true }).catch(() => {});
         }
         if (id.startsWith("sil_evet_")) {
           const rec = db.fetch(`silme_${docId}`) || {};
+          if (rec.durum && rec.durum !== "bekliyor") {
+            await silmeLogunuIsle(interaction.client, rec, docId, rec.durum === "onaylandi" ? "kabul" : "red", rec.sebep, interaction.user.tag);
+            return interaction.reply({ content: "Bu talep zaten işlenmiş.", ephemeral: true }).catch(() => {});
+          }
           const uid = String(rec.discordId || "").replace(/\D/g, "").slice(0, 25);
           if (!uid) return interaction.reply({ content: "Kayıt bulunamadı.", ephemeral: true }).catch(() => {});
           let n = 0;
@@ -529,6 +570,7 @@ module.exports = async (interaction) => {
               .setFooter({ text: "RiseBunny • veri silme" })
               .setTimestamp()] }).catch(() => {});
           } catch {}
+          await silmeLogunuIsle(interaction.client, rec, docId, "kabul", "", interaction.user.tag);
           ownerLog(interaction.client, `🗑️ **Silme onaylandı:** \`${docId}\` (<@${uid}>) — ${n} bot kaydı, ${siteSonuc.silinen} site kaydı silindi, kapsam: ${kapsam}`).catch(() => {});
           return interaction.reply({ content: `✅ İşlendi: ${n} bot + ${siteSonuc.silinen} site kaydı silindi.`, ephemeral: true }).catch(() => {});
         }
