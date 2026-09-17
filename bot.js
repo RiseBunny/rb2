@@ -265,7 +265,9 @@ const SHOP_CATALOG = {
   "bunny-neon":  { tip: "cape", fiyat: 8000, ad: "⚡ Bunny Neon Pelerini" },
   anniversary15: { tip: "cape", fiyat: 12000, ad: "💚 15. Yıl Creeper Pelerini" },
   "ender-heart": { tip: "cape", fiyat: 15000, ad: "💜 Ender Heart Pelerini" },
-  "bunny-gold":  { tip: "cape", fiyat: 20000, ad: "🐰 Bunny Gold Pelerini", premiumGerek: true }
+  "bunny-gold":  { tip: "cape", fiyat: 20000, ad: "🐰 Bunny Gold Pelerini" },
+  migrator:      { tip: "cape", fiyat: 30000, ad: "🧭 Migrator Pelerini", premiumGerek: true },
+  "trosa-crown": { tip: "cape", fiyat: 40000, ad: "👑 Trosa Crown Pelerini", premiumGerek: true }
 };
 // Efektif ürün: varsayılan + sahip geçersiz kılmaları (magaza_<id> = {fiyat, gorunur})
 function _magaza(id) {
@@ -315,6 +317,11 @@ app.post("/api/shop/buy", _botAuth, express.json(), async (req, res) => {
   try {
     const id = String(req.body?.userId || "").replace(/\D/g, "").slice(0, 20);
     const item = _magaza(req.body?.item);
+    /* Satın alma kaynağı: launcher mi site mi? (site /api/launcher/buy 'source'
+       alanını iletir; eski çağrılarda 'site' varsayılır.) */
+    const kaynak = String(req.body?.source || "").toLowerCase() === "launcher"
+      ? "launcher"
+      : "site";
     if (!id || !item) return res.status(400).json({ error: "geçersiz istek" });
     if (!item.gorunur) return res.status(403).json({ error: "Bu ürün şu an satışta değil." });
     // ✅ CAPE SAHİPLİK KONTROLÜ (ödeme öncesi)
@@ -368,12 +375,21 @@ if (item.tip === "cape") {
     wallet = Number(db.fetch(`para_${id}`) || 0);
     bank = Number(db.fetch(`bankapara_${id}`) || 0);
     dmMetin += `\n💸 Kalan paranız: **${(wallet + bank).toLocaleString()}** (Cüzdan: ${wallet.toLocaleString()} + Banka: ${bank.toLocaleString()})`;
-    _dmBildir(id, dmBaslik, dmMetin);
-    console.log(`[Mağaza] ${id} satın aldı: ${item.ad} (${item.fiyat})${kazandi ? ` → kazandı: ${kazandi.ad}` : ""}`);
-    U.ownerLog(client, new Discord.EmbedBuilder().setColor("Gold").setTitle("🛒 Site Mağaza Satışı")
-      .setDescription(`**Kullanıcı:** <@${id}> (\`${id}\`)\n**Ürün:** ${item.ad}\n**Fiyat:** ${item.fiyat.toLocaleString()} 💸${kazandi ? `\n**Kazandı:** ${kazandi.ad}` : ""}\n**Kalan:** ${(wallet + bank).toLocaleString()} 💸`)
+    dmMetin += `\n🧾 Satın alma yeri: **${kaynak === "launcher" ? "RiseBunny Launcher" : "risebunny.vercel.app"}**`;
+    await _dmBildir(id, dmBaslik, dmMetin);
+    console.log(`[Mağaza:${kaynak}] ${id} satın aldı: ${item.ad} (${item.fiyat})${kazandi ? ` → kazandı: ${kazandi.ad}` : ""}`);
+    U.ownerLog(client, new Discord.EmbedBuilder()
+      .setColor(kaynak === "launcher" ? "Green" : "Gold")
+      .setTitle(kaynak === "launcher" ? "🖥️ Launcher'den Satın Alım" : "🛒 Site Mağaza Satışı")
+      .addFields(
+        { name: "Kullanıcı", value: `<@${id}> (\`${id}\`)`, inline: false },
+        { name: "Ürün", value: item.ad, inline: true },
+        { name: "Fiyat", value: `${item.fiyat.toLocaleString()} 💸`, inline: true },
+        { name: "Kalan", value: `${(wallet + bank).toLocaleString()} 💸`, inline: true }
+      )
+      .setDescription(kazandi ? `🎁 Paketten kazandı: **${kazandi.ad}**` : null)
       .setTimestamp()).catch(() => {});
-    res.json({ ok: true, item: req.body.item, ad: item.ad, fiyat: item.fiyat, kazandi, wallet, bank, total: wallet + bank });
+    res.json({ ok: true, item: req.body.item, ad: item.ad, fiyat: item.fiyat, kazandi, wallet, bank, total: wallet + bank, source: kaynak });
   } catch (e) { res.status(500).json({ error: "hata" }); }
 });
 // Kupon kullanımı (site): Discord oturumu Vercel'den doğrulanmış kullanıcı ID'si ile gelir
@@ -500,16 +516,38 @@ app.post("/api/deletion/request", _botAuth, express.json(), async (req, res) => 
     const username = String(req.body?.username || "").slice(0, 60);
     const kapsam = ["bot", "site", "ikisi"].includes(req.body?.kapsam) ? req.body.kapsam : "ikisi";
     if (!docId || !discordId) return res.status(400).json({ error: "eksik alan" });
-    db.set(`silme_${docId}`, { durum: "bekliyor", sebep: "", discordId, username, kapsam, at: Date.now() });
+    /* Site tarafı kullanıcının hangi platformlarda hangi verisi olduğunu bildirir;
+       sahip logunda bu liste gösterilir. */
+    const hamVeri = req.body?.veri && typeof req.body.veri === "object" ? req.body.veri : {};
+    const liste = (v) => (Array.isArray(v) ? v.map(x => String(x).slice(0, 140)).slice(0, 25) : []);
+    const veri = { site: liste(hamVeri.site), bot: liste(hamVeri.bot) };
+    db.set(`silme_${docId}`, {
+      durum: "bekliyor", sebep: "", discordId, username, kapsam, veri, at: Date.now()
+    });
     const row = new Discord.ActionRowBuilder().addComponents(
       new Discord.ButtonBuilder().setCustomId(`sil_onay_${docId}`).setLabel("Kabul Et").setStyle(Discord.ButtonStyle.Success).setEmoji("✅"),
       new Discord.ButtonBuilder().setCustomId(`sil_red_${docId}`).setLabel("Reddet").setStyle(Discord.ButtonStyle.Danger).setEmoji("✖️")
     );
+    const botListe = veri.bot.length
+      ? veri.bot.map(s => `• ${s}`).join("\n")
+      : silmeOzet(discordId);
+    const siteListe = veri.site.length
+      ? veri.site.map(s => `• ${s}`).join("\n")
+      : "(site tarafında bildirilen veri yok)";
     U.ownerLog(client, { embeds: [new Discord.EmbedBuilder().setColor("Red").setTitle("🗑️ Veri Silme Talebi")
-      .setDescription(`**Kullanıcı:** ${username || "?"} (<@${discordId}>, \`${discordId}\`)\n**Kapsam:** ${kapsam}\n**Talep:** \`${docId}\`\n\n**Silinecek bot verileri:**\n${silmeOzet(discordId)}\n\nSite verileri (forum hesabı + içerikler) onay sonrası kullanıcının tarayıcısında silinir.`)],
+      .setDescription(
+        `**Kullanıcı:** ${username || "?"} (<@${discordId}>, \`${discordId}\`)\n` +
+        `**Kapsam:** ${kapsam === "ikisi" ? "Bot + Site" : kapsam === "bot" ? "Sadece Bot" : "Sadece Site"}\n` +
+        `**Talep:** \`${docId}\`\n\n` +
+        `**🤖 Bot platformundaki veriler**\n${botListe}\n\n` +
+        `**🌐 Site platformundaki veriler**\n${siteListe}\n\n` +
+        "Kabul edersen bu veriler silinir ve kullanıcıya DM ile bildirilir."
+      )],
       components: [row] }).catch(() => {});
-    res.json({ ok: true });
-  } catch { res.status(500).json({ error: "hata" }); }
+    await _dmBildir(discordId, "🗑️ Veri Silme Talebin Alındı",
+      `**${username || "Kullanıcı"}**, veri silme talebin sahibe iletildi.\n\n**Kapsam:** ${kapsam === "ikisi" ? "Bot + Site" : kapsam === "bot" ? "Sadece Bot" : "Sadece Site"}\nSahip onayladığında (veya reddedip sebep yazdığında) burada DM ile bilgilendirileceksin. 🐰`).catch(() => {});
+    res.json({ ok: true, kayit: docId });
+  } catch (e) { res.status(500).json({ error: "hata" }); }
 });
 app.get("/api/deletion/status", _botAuth, async (req, res) => {
   try {
@@ -530,17 +568,63 @@ app.get("/api/site-status", (req, res) => {
   const site = db.fetch("site_bakim") || null;
   res.json({ bakim: !!(site && site.acik), sebep: (site && site.sebep) || "", botBakim: !!db.fetch("8182bakımaç81") });
 });
-// Discord e-posta kaydı (Vercel OAuth callback yazar — sır korumalı)
-app.post("/api/discord/link", _botAuth, express.json(), (req, res) => {
+/* ── Giriş bildirimi: site (OAuth) ve launcher girişlerinde kullanıcıya DM +
+   sahip loga embed. Aynı kullanıcı 5 dakika içinde tekrar giriş yaparsa
+   (sayfa yenileme vb.) bildirim tekrarlanmaz. */
+const GIRIS_BILDIRIM_ARALIK = 5 * 60 * 1000;
+async function girisiBildir({ id, username, source, email }) {
+  const uid = String(id || "").replace(/\D/g, "").slice(0, 20);
+  if (!uid) return false;
+  const nereden = source === "launcher" ? "launcher" : "site";
+  const anahtar = `giris_bildirim_${uid}`;
+  const son = Number(db.fetch(anahtar) || 0);
+  if (Date.now() - son < GIRIS_BILDIRIM_ARALIK) return false;
+  db.set(anahtar, Date.now());
+
+  const adSoyad = String(username || "").slice(0, 60) || `Kullanıcı_${uid.slice(-4)}`;
+  await _dmBildir(
+    uid,
+    "🔐 Discord Girişi Başarılı",
+    `Merhaba **${adSoyad}**! RiseBunny hesabına **${nereden === "launcher" ? "RiseBunny Launcher" : "risebunny.vercel.app"}** üzerinden Discord ile giriş yaptın.\n\n` +
+      "Bu girişi sen yapmadıysan Discord şifreni değiştir ve destek sunucumuza yaz. 🐰"
+  ).catch(() => {});
+  U.ownerLog(client, new Discord.EmbedBuilder()
+    .setColor(nereden === "launcher" ? "Green" : "Blurple")
+    .setTitle(nereden === "launcher" ? "🖥️ Launcher Girişi" : "🌐 Site Girişi")
+    .addFields(
+      { name: "Kullanıcı", value: `<@${uid}> (\`${uid}\`)`, inline: false },
+      { name: "Kullanıcı adı", value: adSoyad, inline: true },
+      { name: "Kaynak", value: nereden === "launcher" ? "RiseBunny Launcher" : "Web sitesi (OAuth)", inline: true }
+    )
+    .setTimestamp()).catch(() => {});
+  return true;
+}
+
+// Discord e-posta kaydı (Vercel OAuth callback yazar — sır korumalı).
+// Aynı zamanda site/launcher giriş bildirimini (DM + sahip log) üretir.
+app.post("/api/discord/link", _botAuth, express.json(), async (req, res) => {
   try {
     const id = String(req.body?.userId || "").replace(/\D/g, "").slice(0, 20);
     if (!id) return res.status(400).json({ error: "geçersiz id" });
-    db.set(`dmail_${id}`, {
-      email: String(req.body?.email || "").slice(0, 120),
-      username: String(req.body?.username || "").slice(0, 60),
-      at: Date.now()
-    });
+    const username = String(req.body?.username || "").slice(0, 60);
+    const email = String(req.body?.email || "").slice(0, 120);
+    db.set(`dmail_${id}`, { email, username, at: Date.now() });
+    await girisiBildir({ id, username, email, source: req.body?.source });
     res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: "hata" }); }
+});
+// Doğrudan giriş bildirimi (launcher tarafından tetiklenir)
+app.post("/api/login", _botAuth, express.json(), async (req, res) => {
+  try {
+    const id = String(req.body?.userId || "").replace(/\D/g, "").slice(0, 20);
+    if (!id) return res.status(400).json({ error: "geçersiz id" });
+    const ok = await girisiBildir({
+      id,
+      username: req.body?.username,
+      source: req.body?.source,
+      email: req.body?.email
+    });
+    res.json({ ok: true, bildirildi: ok });
   } catch { res.status(500).json({ error: "hata" }); }
 });
 
@@ -805,7 +889,10 @@ client.elevation = (message) => {
   try {
     if (message.member.permissions.has(Discord.PermissionFlagsBits.BanMembers)) lvl = 2;
     if (message.member.permissions.has(Discord.PermissionFlagsBits.Administrator)) lvl = 3;
-    if (message.author.id === U.SAHIP_ID) lvl = 4;
+    /* Sahip tüm sahip komutlarını (permLevel 5) çalıştırabilmeli.
+       Eskiden 4 dönüyordu; message.js'teki `perms < permLevel` kontrolü
+       yüzünden r!presil dahil TÜM sahip komutları sessizce çalışmıyordu. */
+    if (message.author.id === U.SAHIP_ID) lvl = 5;
   } catch {}
   return lvl;
 };
