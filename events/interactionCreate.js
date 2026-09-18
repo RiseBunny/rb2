@@ -125,7 +125,8 @@ module.exports = async (interaction) => {
         if (mevcutId && guild.channels.cache.get(mevcutId)) {
           return interaction.update({ content: "Zaten açık bir biletin var.", components: [] }).catch(() => {});
         }
-        const kategoriId = interaction.values[0];
+        // Kategori ID'yi DB'den al (select menü değeri Discord kategori kanal ID'si değil, anahtar)
+        const kategoriId = db.fetch(`ticket_kategori.${guild.id}`);
         await interaction.deferReply({ ephemeral: true }).catch(() => {});
         const kanal = await acBilet(interaction.client, guild, interaction.user, "destek", lang, null, kategoriId);
         if (kanal) return interaction.editReply({ content: `Biletin açıldı: ${kanal}`, components: [] }).catch(() => {});
@@ -276,7 +277,7 @@ module.exports = async (interaction) => {
         const guild = interaction.guild;
         const mevcutId = db.fetch(`ass.${guild.id}.${interaction.user.id}`);
         if (mevcutId && guild.channels.cache.get(mevcutId)) {
-          return interaction.editReply({ content: "Zaten açık bir biletin var." }).catch(() => {});
+          return interaction.reply({ content: "Zaten açık bir biletin var.", ephemeral: true }).catch(() => {});
         }
         // Kategori seçimi için select menü gönder
         const row = new ActionRowBuilder().addComponents(
@@ -290,7 +291,7 @@ module.exports = async (interaction) => {
               emoji: k.emoji
             })))
         );
-        return interaction.editReply({ content: "🎫 Bilet kategorisini seçin:", components: [row] }).catch(() => {});
+        return interaction.reply({ content: "🎫 Bilet kategorisini seçin:", components: [row], ephemeral: true }).catch(() => {});
       }
 
       // --- Ticket kapat / sil ---
