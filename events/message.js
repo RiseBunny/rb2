@@ -3,6 +3,7 @@ const { t, getLang, hasLang, hasGuildLang, hasConsent, komutCoz } = require("../
 const { PREFIX, SAHIP_ID, bakimSebebi, ownerLog, giveCommandXp } = require("../utils");
 const db = require("croxydb");
 const { findClosestCommand } = require("../util/fuzzyMatch");
+const { aiIsle } = require("../ai/handler");
 
 // NOT: Komut kullanımları otomatik olarak sahip loguna DÜŞMEZ.
 // Yanlış/eksik kullanımlar logu kirletmesin diye her komut SADECE
@@ -11,6 +12,13 @@ const { findClosestCommand } = require("../util/fuzzyMatch");
 module.exports = async message => {
   const client = message.client;
   if (!client || message.author?.bot) return;
+
+  // 🤖 AI SOHBET SİSTEMİ (prefix gerektirmez, DM'de de çalışır)
+  // "rise <soru>" formatında tetiklenir
+  const aiCevapVerdi = await aiIsle(message, client);
+  if (aiCevapVerdi) return;
+
+  // Normal komutlar için sunucu ve üye kontrolü
   if (!message.guild || !message.member) return;
 
   const prefix = process.env.PREFIX || PREFIX;
@@ -30,7 +38,11 @@ module.exports = async message => {
     if (suggestion) {
       const lang = await getLang(message.author.id);
       const cmd = client.commands.get(suggestion.canonical);
-      const displayName = cmd?.help?.name || suggestion.canonical;
+      // Kullanıcının dili İngilizse komutun İngilizce adını (KOMUTLAR[canonical].en) göster
+      const { KOMUTLAR } = require("../dil/komutlar");
+      const displayName = lang === "en"
+        ? (KOMUTLAR[suggestion.canonical]?.en || suggestion.canonical)
+        : (cmd?.help?.name || suggestion.canonical);
       const suggestionMsg = lang === "en"
         ? `Command not found. Did you mean \`${displayName}\`?`
         : `Böyle bir komut yok. \`${displayName}\` mu demek istediniz?`;
