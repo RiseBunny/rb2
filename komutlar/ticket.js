@@ -1,9 +1,17 @@
-const { EmbedBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, ModalBuilder, TextInputBuilder, TextInputStyle } = require("discord.js");
+const { EmbedBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } = require("discord.js");
 const { t, getLang } = require("../dil");
-const { isPremium, DESTEK, PREFIX, safeSend, ownerLog } = require("../utils");
+const { isPremium, DESTEK, PREFIX, safeSend, ownerLog, SAHIP_ID } = require("../utils");
 const db = require("croxydb");
 
 const cooldowns = new Map();
+
+/* Ticket kategori seçenekleri. */
+const TICKET_KATEGORILER = [
+  { id: "destek", label: "Destek", emoji: "🛠️", description: "Genel destek ve sorular" },
+  { id: "sikayet", label: "Şikayet", emoji: "⚠️", description: "Kullanıcı/yetkili şikayeti" },
+  { id: "oneri", label: "Öneri", emoji: "💡", description: "Sunucu önerileri" },
+  { id: "diger", label: "Diğer", emoji: "📝", description: "Diğer konular" }
+];
 
 exports.run = async (client, message, args) => {
   const lang = await getLang(message.author.id);
@@ -21,7 +29,8 @@ exports.run = async (client, message, args) => {
     return message.reply(t(lang, "ticket.kanalOk", { kanal: `${channel}` }));
   }
 
-  if (!isPremium(message.author.id)) {
+  /* Sahip premium kontrolünden muaftır (test/kurulum takılmasın). */
+  if (message.author.id !== SAHIP_ID && !isPremium(message.author.id)) {
     const e = new EmbedBuilder()
       .setColor("#ee7621")
       .setTitle((lang === "en" ? "Premium Feature" : "Premium Özellik"))
@@ -65,16 +74,51 @@ exports.run = async (client, message, args) => {
   await acBilet(client, message.guild, message.author, sebep, lang, message.channel);
 };
 
-async function acBilet(client, guild, user, sebep, lang, bilgiKanal) {
+/**
+ * Ticket kategorisi seçimi için select menü oluşturur.
+ */
+function kategoriMenuOlustur(lang) {
+  const row = new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId("ticket_kategori_sec")
+      .setPlaceholder(t(lang, "ticket.kategoriSec"))
+      .addOptions(TICKET_KATEGORILER.map(k => ({
+        label: t(lang, `ticket.kategori${k.id.charAt(0).toUpperCase() + k.id.slice(1)}`),
+        value: k.id,
+        description: k.description,
+        emoji: k.emoji
+      })))
+  );
+  return row;
+}
+
+async function acBilet(client, guild, user, sebep, lang, bilgiKanal, kategoriId = null) {
   const temiz = sebep.toLowerCase().replace(/[^a-z0-9ğüşöçıİ-]/gi, "-").slice(0, 20) || "destek";
   const no = Math.floor(1000 + Math.random() * 9000);
   const isim = `ticket-${temiz}-${no}`;
+
+  // Kategori kontrolü
+  let parent = null;
+  if (kategoriId) {
+    parent = guild.channels.cache.get(kategoriId);
+    if (!parent || parent.type !== 4) { // 4 = GuildCategory
+      kategoriId = null;
+    }
+  } else {
+    // Otomatik: ayarlanan kategori varsa onu kullan
+    const ayarlananKategoriId = db.fetch(`ticket_kategori.${guild.id}`);
+    if (ayarlananKategoriId) {
+      const cat = guild.channels.cache.get(ayarlananKategoriId);
+      if (cat && cat.type === 4) parent = cat;
+    }
+  }
 
   let kanal;
   try {
     kanal = await guild.channels.create({
       name: isim,
       type: ChannelType.GuildText,
+      parent: parent,
       permissionOverwrites: [
         { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
         { id: user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }
@@ -86,12 +130,13 @@ async function acBilet(client, guild, user, sebep, lang, bilgiKanal) {
   }
 
   db.set(`ass.${guild.id}.${user.id}`, kanal.id);
-  db.set(`ticket.${guild.id}.${kanal.id}`, { sebep, acan: user.id, tarih: Date.now() });
+  db.set(`ticket.${guild.id}.${kanal.id}`, { sebep, acan: user.id, tarih: Date.now(), kategori: kategoriId || (parent?.id || null) });
 
+  const kategoriAdi = parent ? parent.name : (lang === "en" ? "No Category" : "Kategorisiz");
   const e = new EmbedBuilder()
     .setColor("#ee7621")
     .setTitle(t(lang, "ticket.amacBaslik"))
-    .setDescription((lang === "en" ? `**Reason:** ${sebep}\n\n${t(lang, "ticket.hosgeldin")}` : `**Sebep:** ${sebep}\n\n${t(lang, "ticket.hosgeldin")}`))
+    .setDescription((lang === "en" ? `**Reason:** ${sebep}\n**Category:** ${kategoriAdi}\n\n${t(lang, "ticket.hosgeldin")}` : `**Sebep:** ${sebep}\n**Kategori:** ${kategoriAdi}\n\n${t(lang, "ticket.hosgeldin")}`))
     .setFooter({ text: (lang === "en" ? "RiseBunny • Use the button to close" : "RiseBunny • Kapatmak için butonu kullan") });
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`ticket_kapat_${kanal.id}`).setLabel(lang === "en" ? "Close 🔒" : "Kapat 🔒").setStyle(ButtonStyle.Danger),
@@ -99,7 +144,7 @@ async function acBilet(client, guild, user, sebep, lang, bilgiKanal) {
   );
   await safeSend(kanal, { content: `${user}`, embeds: [e], components: [row] });
   if (bilgiKanal) safeSend(bilgiKanal, (lang === "en" ? `Your ticket is open: ${kanal}` : `Biletin açıldı: ${kanal}`));
-  await ownerLog(client, new EmbedBuilder().setColor("Orange").setDescription((lang === "en" ? `🎫 Ticket opened: **${guild.name}** | ${user.tag} | Reason: ${sebep}` : `🎫 Bilet açıldı: **${guild.name}** | ${user.tag} | Sebep: ${sebep}`)));
+  await ownerLog(client, new EmbedBuilder().setColor("Orange").setDescription((lang === "en" ? `🎫 Ticket opened: **${guild.name}** | ${user.tag} | Reason: ${sebep} | Category: ${kategoriAdi}` : `🎫 Bilet açıldı: **${guild.name}** | ${user.tag} | Sebep: ${sebep} | Kategori: ${kategoriAdi}`)));
   return kanal;
 }
 
