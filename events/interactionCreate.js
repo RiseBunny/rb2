@@ -654,8 +654,14 @@ module.exports = async (interaction) => {
       }
     }
 
-    // Modal submit (ileride ticket sebep modalı için hazır)
-    if (interaction.isModalSubmit() && interaction.customId === "ticket_sebep") {
+// 🤖 AI "Öğren" butonu handler
+  if (interaction.isButton() && interaction.customId.startsWith("ai_learn_")) {
+    const { learnButonIsle } = require("../ai/handler");
+    return learnButonIsle(interaction, interaction.client);
+  }
+
+  // Modal submit (ileride ticket sebep modalı için hazır)
+  if (interaction.isModalSubmit() && interaction.customId === "ticket_sebep") {
       const sebep = interaction.fields.getTextInputValue("sebep") || "destek";
       const { acBilet } = require("../komutlar/ticket");
       const lang = await getLang(interaction.user.id);
