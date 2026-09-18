@@ -1,6 +1,6 @@
 const { EmbedBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 const { t, getLang, setLang, setGuildLang, hasGuildLang, hasConsent, setConsent } = require("../dil");
-const { ownerLog } = require("../utils");
+const { ownerLog, modLogGonder } = require("../utils");
 const db = require("croxydb");
 
 module.exports = async (interaction) => {
@@ -308,6 +308,7 @@ module.exports = async (interaction) => {
         if (!uye || !uye.kickable) return interaction.reply({ content: "Atamıyorum (yetki/rol).", ephemeral: true });
         try { await uye.kick(`Onaylı kick: ${interaction.user.tag}`); } catch { return interaction.reply({ content: "Kick başarısız.", ephemeral: true }); }
         await ownerLog(interaction.client, new EmbedBuilder().setColor("Orange").setDescription(`👢 Kick: **${uye.user.tag}** | **${interaction.guild.name}** | Yetkili: ${interaction.user.tag}`));
+        await modLogGonder(interaction.guild, new EmbedBuilder().setColor("Orange").setDescription(`👢 **Kick**\n**Atılan:** ${uye.user.tag} (${uye.id})\n**Yetkili:** ${interaction.user.tag}`).setTimestamp());
         return interaction.update({ content: `✅ **${uye.user.tag}** sunucudan atıldı!`, embeds: [], components: [] }).catch(() => {});
       }
 
@@ -322,6 +323,7 @@ module.exports = async (interaction) => {
         if (!uye || !uye.bannable) return interaction.reply({ content: "Banlayamıyorum (yetki/rol).", ephemeral: true });
         try { await uye.ban({ reason: `Onaylı ban: ${interaction.user.tag}` }); } catch { return interaction.reply({ content: "Ban başarısız.", ephemeral: true }); }
         await ownerLog(interaction.client, new EmbedBuilder().setColor("Red").setDescription(`🔨 Ban: **${uye.user.tag}** | **${interaction.guild.name}** | Yetkili: ${interaction.user.tag}`));
+        await modLogGonder(interaction.guild, new EmbedBuilder().setColor("Red").setDescription(`🔨 **Ban**\n**Yasaklanan:** ${uye.user.tag} (${uye.id})\n**Yetkili:** ${interaction.user.tag}`).setTimestamp());
         return interaction.update({ content: `✅ **${uye.user.tag}** sunucudan banlandı!`, embeds: [], components: [] }).catch(() => {});
       }
 
