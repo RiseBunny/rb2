@@ -117,6 +117,20 @@ async function ownerLog(client, payload) {
   } catch {}
 }
 
+/* Sunucunun mod-log kanalına yazar (r!modlog ile ayarlanır).
+   Kanal yoksa sessizce atlar — komut akışını asla bozmaz. */
+async function modLogGonder(guild, embed) {
+  try {
+    if (!guild) return false;
+    const kanalId = db.fetch(`log_${guild.id}`);
+    if (!kanalId) return false;
+    const kanal = guild.channels.cache.get(kanalId);
+    if (!kanal || typeof kanal.isTextBased !== "function" || !kanal.isTextBased()) return false;
+    await kanal.send({ embeds: [embed] }).catch(() => {});
+    return true;
+  } catch { return false; }
+}
+
 async function komutLog(client, message, komutAd) {
   const e = new EmbedBuilder()
     .setColor("Blue")
@@ -632,6 +646,7 @@ module.exports = {
   premiumKalan,
   requirePremium,
   ownerLog,
+  modLogGonder,
   komutLog,
   embed,
   safeSend,
