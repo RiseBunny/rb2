@@ -149,6 +149,7 @@ async function acBilet(client, guild, user, sebep, lang, bilgiKanal, kategoriId 
 }
 
 exports.acBilet = acBilet;
+exports.TICKET_KATEGORILER = TICKET_KATEGORILER;
 
 exports.conf = { enabled: true, guildOnly: true, aliases: ["bilet", "destek"], permLevel: 0, kategori: "ticket" };
 exports.help = { name: "ticket", description: "Ticket / destek bileti açar.", usage: "ticket <sebep> | ticket panel | ticket kanal #kanal" };
