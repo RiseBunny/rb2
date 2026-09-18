@@ -1419,6 +1419,23 @@ client.on("error", e => console.log(String(e).replace(tokenLeak, "[redacted]")))
 process.on("unhandledRejection", e => console.error("Yakalanmamış asenkron hata:", e?.message || e));
 process.on("uncaughtException", e => console.error("Yakalanmamış hata:", e?.message || e));
 
+// ---------- AI cevaplar.json Hot Reload ----------
+const cevaplarPath = path.join(__dirname, "cevaplar.json");
+fs.watch(cevaplarPath, (event) => {
+  if (event === "change") {
+    console.log("🔄 [AI] cevaplar.json değişti, yeniden yükleniyor...");
+    try {
+      delete require.cache[require.resolve("./ai/matcher")];
+      delete require.cache[require.resolve("./ai/handler")];
+      const { reloadMatcher } = require("./ai/handler");
+      reloadMatcher();
+      console.log("✅ [AI] Yeniden yüklendi");
+    } catch (e) {
+      console.error("❌ [AI] Reload hatası:", e.message);
+    }
+  }
+});
+
 // ---------- Login ----------
 const discordToken = process.env.DISCORD_BOT_TOKEN || process.env.token;
 if (!discordToken) {
