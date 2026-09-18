@@ -1,7 +1,7 @@
 const { EmbedBuilder, PermissionFlagsBits } = require("discord.js");
 const ms = require("ms");
 const { t, getLang } = require("../dil");
-const { komutLog, timedDelete } = require("../utils");
+const { komutLog, timedDelete, modLogGonder } = require("../utils");
 
 exports.run = async (client, message, args) => {
   const lang = await getLang(message.author.id);
@@ -41,6 +41,7 @@ exports.run = async (client, message, args) => {
     .setColor("Green")
     .setDescription((lang === "en" ? `🔇 ${uye} muted for **${ms(sure, { long: true })}**.\n**Reason:** ${sebep}` : `🔇 ${uye} **${ms(sure, { long: true })}** süreyle susturuldu.\n**Sebep:** ${sebep}`));
   await message.channel.send({ embeds: [embed] });
+  await modLogGonder(message.guild, new EmbedBuilder().setColor("Green").setDescription(`🔇 **Mute**\n**Susturulan:** ${uye.user.tag} (${uye.id})\n**Süre:** ${ms(sure, { long: true })}\n**Sebep:** ${sebep}\n**Yetkili:** ${message.author.tag}`).setTimestamp());
   await komutLog(client, message, "mute");
 };
 
