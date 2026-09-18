@@ -266,8 +266,20 @@ const SHOP_CATALOG = {
   anniversary15: { tip: "cape", fiyat: 300000, ad: "💚 15. Yıl Creeper Pelerini" },
   "ender-heart": { tip: "cape", fiyat: 400000, ad: "💜 Ender Heart Pelerini" },
   "bunny-gold":  { tip: "cape", fiyat: 500000, ad: "🐰 Bunny Gold Pelerini" },
+  "dragon-wings": { tip: "cape", fiyat: 250000, ad: "🐲 Dragon Wings" },
   migrator:      { tip: "cape", fiyat: 600000, ad: "🧭 Migrator Pelerini", premiumGerek: true },
-  "trosa-crown": { tip: "cape", fiyat: 700000, ad: "👑 Trosa Crown Pelerini", premiumGerek: true }
+  "trosa-crown": { tip: "cape", fiyat: 700000, ad: "👑 Trosa Crown Pelerini", premiumGerek: true },
+  "bandana-red":  { tip: "bandana", fiyat: 50000, ad: "🎀 Kırmızı Bandana" },
+  "bandana-blue": { tip: "bandana", fiyat: 100000, ad: "💙 Mavi Bandana" },
+  "bandana-gold": { tip: "bandana", fiyat: 150000, ad: "👑 Altın Bandana" },
+  "ember-cape":   { tip: "cape", fiyat: 0, ad: "🔥 Ember Pelerini" },
+  "ocean-cape":   { tip: "cape", fiyat: 0, ad: "🌊 Ocean Pelerini" },
+  "mint-cape":    { tip: "cape", fiyat: 0, ad: "🌿 Mint Pelerini" },
+  "blossom-cape": { tip: "cape", fiyat: 0, ad: "🌸 Blossom Pelerini" },
+  "royal-cape":   { tip: "cape", fiyat: 250000, ad: "👑 Royal Pelerini" },
+  "bloodmoon-cape": { tip: "cape", fiyat: 350000, ad: "🌙 Blood Moon Pelerini" },
+  "frost-cape":   { tip: "cape", fiyat: 450000, ad: "❄️ Frost Pelerini" },
+  "shadow-cape":  { tip: "cape", fiyat: 600000, ad: "🌑 Shadow Pelerini" }
 };
 // Efektif ürün: varsayılan + sahip geçersiz kılmaları (magaza_<id> = {fiyat, gorunur})
 function _magaza(id) {
@@ -324,11 +336,11 @@ app.post("/api/shop/buy", _botAuth, express.json(), async (req, res) => {
       : "site";
     if (!id || !item) return res.status(400).json({ error: "geçersiz istek" });
     if (!item.gorunur) return res.status(403).json({ error: "Bu ürün şu an satışta değil." });
-    // ✅ CAPE SAHİPLİK KONTROLÜ (ödeme öncesi)
-if (item.tip === "cape") {
+    // ✅ CAPE/BANDANA SAHİPLİK KONTROLÜ (ödeme öncesi, ortak liste)
+if (item.tip === "cape" || item.tip === "bandana") {
   const owned = db.fetch(`launcher_capes_${id}`) || [];
   if (Array.isArray(owned) && owned.includes(req.body.item)) {
-    return res.status(409).json({ error: "Bu pelerine zaten sahipsin." });
+    return res.status(409).json({ error: item.tip === "bandana" ? "Bu bandanaya zaten sahipsin." : "Bu pelerine zaten sahipsin." });
   }
 }
     if (item.premiumGerek && !U.isPremium(id)) return res.status(403).json({ error: "Bu pet için premium gerekli." });
@@ -358,15 +370,18 @@ if (item.tip === "cape") {
       U.addPremium(id, item.gun * 24 * 60 * 60 * 1000);
       dmBaslik = "🎉 Tebrikler! Premium Aktif";
       dmMetin = `**${item.ad}** aldınız, premiumunuz **${item.gun} gün** aktif! İyi eğlenceler! 💎`;
-   } else if (item.tip === "cape") {
-      // ✅ CAPE SAHİPLİK KAYDI
+   } else if (item.tip === "cape" || item.tip === "bandana") {
+      // ✅ CAPE/BANDANA SAHİPLİK KAYDI (ortak liste)
       const owned = db.fetch(`launcher_capes_${id}`) || [];
       if (!owned.includes(req.body.item)) {
         owned.push(req.body.item);
         db.set(`launcher_capes_${id}`, owned);
       }
-      dmBaslik = "🎉 Tebrikler! Pelerin Aldın";
-      dmMetin = `**${item.ad}** aldınız! Launcher'da **B** tuşuyla açılan menüden kuşanabilirsiniz. 🧥`;
+      const bandana = item.tip === "bandana";
+      dmBaslik = bandana ? "🎉 Tebrikler! Bandana Aldın" : "🎉 Tebrikler! Pelerin Aldın";
+      dmMetin = bandana
+        ? `**${item.ad}** aldınız! Launcher'da **B** tuşuyla açılan menüden kuşanabilirsiniz. 🎀`
+        : `**${item.ad}** aldınız! Launcher'da **B** tuşuyla açılan menüden kuşanabilirsiniz. 🧥`;
     } else {
       _petVer(id, item.pet);
       dmBaslik = "🎉 Tebrikler! Pet Sahiplendin";
