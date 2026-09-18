@@ -17,7 +17,28 @@ const VARSAYILAN = {
   "bunny-neon":  { ad: "⚡ Bunny Neon Pelerini", fiyat: 200000 },
   anniversary15: { ad: "💚 15. Yıl Creeper Pelerini", fiyat: 300000 },
   "ender-heart": { ad: "💜 Ender Heart Pelerini", fiyat: 400000 },
-  "bunny-gold":  { ad: "🐰 Bunny Gold Pelerini", fiyat: 500000 }
+  "bunny-gold":  { ad: "🐰 Bunny Gold Pelerini", fiyat: 500000 },
+  "bandana-red":  { ad: "🎀 Kırmızı Bandana", fiyat: 50000 },
+  "bandana-blue": { ad: "💙 Mavi Bandana", fiyat: 100000 },
+  "bandana-gold": { ad: "👑 Altın Bandana", fiyat: 150000 },
+  "ember-cape":   { ad: "🔥 Ember Pelerini", fiyat: 0 },
+  "ocean-cape":   { ad: "🌊 Ocean Pelerini", fiyat: 0 },
+  "mint-cape":    { ad: "🌿 Mint Pelerini", fiyat: 0 },
+  "blossom-cape": { ad: "🌸 Blossom Pelerini", fiyat: 0 },
+  "royal-cape":   { ad: "👑 Royal Pelerini", fiyat: 250000 },
+  "bloodmoon-cape": { ad: "🌙 Blood Moon Pelerini", fiyat: 350000 },
+  "frost-cape":   { ad: "❄️ Frost Pelerini", fiyat: 450000 },
+  "shadow-cape":  { ad: "🌑 Shadow Pelerini", fiyat: 600000 },
+  "bat-wings":    { ad: "🦇 Bat Wings", fiyat: 200000 },
+  "angel-wings":  { ad: "😇 Angel Wings", fiyat: 350000 },
+  "demon-wings":  { ad: "😈 Demon Wings", fiyat: 500000 },
+  "dragon-gold":    { ad: "🐲 Dragon Wings (Golden)", fiyat: 300000 },
+  "dragon-emerald": { ad: "🐲 Dragon Wings (Emerald)", fiyat: 350000 },
+  "dragon-frost":   { ad: "🐲 Dragon Wings (Frost)", fiyat: 400000 },
+  "dragon-crimson": { ad: "🐲 Dragon Wings (Crimson)", fiyat: 450000 },
+  "dragon-void":    { ad: "🐲 Dragon Wings (Void)", fiyat: 550000 },
+  "dragon-shadow":  { ad: "🐲 Dragon Wings (Shadow)", fiyat: 600000 },
+  "dragon-wings": { ad: "🐲 Dragon Wings", fiyat: 250000 }
 };
 
 function liste() {
