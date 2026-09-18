@@ -1,0 +1,259 @@
+{
+  "cevaplar": [
+    {
+      "kategori": "bot",
+      "sorular": [
+        "sen kimsin",
+        "adın ne",
+        "kimsin sen",
+        "nesin sen",
+        "bot kim",
+        "botun adı ne",
+        "sen kimsiniz",
+        "kimsiniz siz",
+        "botunuz kim",
+        "bot kimsin"
+      ],
+      "cevap": "Ben **RiseBunny**! 🐰 Bu sunucuyu yönetmeye, eğlendirmeye ve size yardımcı olmaya gelmiş bir Discord botuyum. Node.js ve discord.js v14 ile geliştirildim."
+    },
+    {
+      "kategori": "bot",
+      "sorular": [
+        "nasılsın",
+        "naber",
+        "ne haber",
+        "iyi misin",
+        "nasıl gidiyor"
+      ],
+      "cevap": "Sistemlerim tıkır tıkır çalışıyor! ⚡ Sen nasılsın {{user}}? Bugün nasıl yardımcı olabilirim?"
+    },
+    {
+      "kategori": "bot",
+      "sorular": [
+        "ne yapabilirsin",
+        "neler yapabilirsin",
+        "özelliklerin neler",
+        "komutların neler",
+        "komutları göster",
+        "yardım et",
+        "ne yapabilrisin",
+        "ne yapablirsin",
+        "ne yapabilirsiniz",
+        "ne islevlerin var",
+        "komutlar neler"
+      ],
+      "cevap": "{{user}}, benim çok özelliğim var! 🎯\n\n**🛡️ Moderasyon:** ban, kick, mute, sil, uyarı, karaliste\n**💰 Ekonomi:** para, banka, çalış, günlük, haftalık, yatır, çek, transfer, CF, slot, blackjack, rulet, piyango, meslek, envanter, kasa, faiz\n**🎮 Eğlence:** espri, şaka, lafat, tkm, zarat, oy, anket, gif, avatar, mc-skin\n**📝 Kayıt:** erkek, kız, isim, yaş, kayıt sistemi\n**🔒 Koruma:** reklam/küfür/spam engel, raid koruma, ban/rol/kanal koruma\n**🎫 Ticket:** destek bileti, kategori seçimi\n**🎁 Çekiliş:** başlat, sonlandır, reroll, şartlı çekiliş\n**📊 Seviye:** seviye, xp, sıralama, ödüller, rol ödülü\n**💎 Premium:** premium al/ver/sil, panel, bonus\n**🤖 AI (Bu sistem):** `rise <soru>` yazıp bana soru sorabilirsin!\n\nDetaylı liste için: `{{prefix}}yardım`"
+    },
+    {
+      "kategori": "bot",
+      "sorular": [
+        "sahibin kim",
+        "botu kim yaptı",
+        "geliştiricin kim",
+        "owner kim"
+      ],
+      "cevap": "Benim geliştiricim **RiseBunny Ekibi**! 👑 Sahibim: `<@985126554306773063>`\nDestek sunucumuz: https://dsc.gg/risebunny"
+    },
+    {
+      "kategori": "bot",
+      "sorular": [
+        "hangi dilleri biliyorsun",
+        "dil biliyor musun",
+        "ingilizce biliyor musun"
+      ],
+      "cevap": "Türkçe ve İngilizce anlıyorum! 🌍\nDil değiştirmek için: `{{prefix}}dil tr` veya `{{prefix}}dil en`\nSunucu dili için: `{{prefix}}dil sunucu tr`"
+    },
+    {
+      "kategori": "bot",
+      "sorular": [
+        "pingin kaç",
+        "ping nedir",
+        "gecikme kaç",
+        "bot laglı mı"
+      ],
+      "cevap": "Pingim: **{{ping}}ms** 🏓\n(Bu değer Discord API gecikmesidir)"
+    },
+    {
+      "kategori": "ekonomi",
+      "sorular": [
+        "para nasıl kazanılır",
+        "para kazanma yolları",
+        "ekonomi nasıl oynanır",
+        "para komutları",
+        "para nasıl kazanlr",
+        "para kazanma yollari",
+        "ekonomi nasil oynanir",
+        "para cmutlari"
+      ],
+      "cevap": "{{user}}, paran kazanmanın yolları: 💸\n• `{{prefix}}çalış` - İş yapıp para kazan (saatte 1)\n• `{{prefix}}günlük` - Günlük ödül al\n• `{{prefix}}haftalık` - Haftalık büyük ödül\n• `{{prefix}}cf <miktar>` - Yazı tura oyna\n• `{{prefix}}slot <miktar>` - Slot makinesi\n• `{{prefix}}blackjack <miktar>` - Blackjack oyna\n• `{{prefix}}rulet <miktar> <renk/sayı>` - Rulet\n• `{{prefix}}soygun @kullanıcı` - Başkalarından çal (riskli!)\n• `{{prefix}}meslek` - Meslek seçip çalış\n• `{{prefix}}piyango` - Piyango bileti al\n\nPremium üyeler +%50 bonus kazanır! 💎"
+    },
+    {
+      "kategori": "ekonomi",
+      "sorular": [
+        "banka nasıl kullanılır",
+        "banka komutları",
+        "para yatır nasıl",
+        "para çek nasıl"
+      ],
+      "cevap": "🏦 **Banka Sistemi:**\n• `{{prefix}}banka` - Bakiyeni gör\n• `{{prefix}}yatır <miktar>` - Parayı bankaya yatır\n• `{{prefix}}çek <miktar>` - Bankadan para çek\n• `{{prefix}}faiz` - Günlük faiz al (Premium: %2)\n• `{{prefix}}iban` - IBAN oluştur/gör\n• `{{prefix}}transfer <iban> <miktar>` - Başkasına havale\n\nBanka parası çalınmaz! 🔒 Premium: çift faiz oranı."
+    },
+    {
+      "kategori": "ekonomi",
+      "sorular": [
+        "pet nasıl alınır",
+        "pet sistemi nasıl çalışır",
+        "pet komutları",
+        "petlerim"
+      ],
+      "cevap": "🐾 **Pet Sistemi:**\n• `{{prefix}}pet al <tür>` - Pet sahiplen (tavşan, köpek, kedi, balık, aslan, kaplan)\n• `{{prefix}}pet sat <no>` - Petini sat (±%10 fiyat değişimi)\n• `{{prefix}}petlerim` - Petlerini listele\n• `{{prefix}}market` - Oyuncu pazarından al/sat\n\nPetler sana XP ve para kazandırır! Beslemek için `{{prefix}}pet besle`\nPremium petler (aslan, kaplan) için Premium gerekli. 💎"
+    },
+    {
+      "kategori": "kayit",
+      "sorular": [
+        "kayıt nasıl yapılır",
+        "kayıt komutları",
+        "erkek kayıt",
+        "kız kayıt",
+        "isim yaş nasıl yazılır"
+      ],
+      "cevap": "📝 **Kayıt Sistemi:**\n1. Yetkili `{{prefix}}erkek @kullanıcı isim yaş` veya `{{prefix}}kız @kullanıcı isim yaş` yazar\n2. Veya otomatik: `{{prefix}}kayıt-kanal` ayarlı kanala girip isim/yaş yazarsın\n3. `{{prefix}}erkek-rol`, `{{prefix}}kız-rol`, `{{prefix}}alınacak-rol` ayarlanmalı\n\nYapay zeka kayıt için: `{{prefix}}ykayıt-sistem` 🤖"
+    },
+    {
+      "kategori": "koruma",
+      "sorular": [
+        "reklam engel nasıl açılır",
+        "küfür engel nasıl açılır",
+        "spam koruma",
+        "raid koruma nasıl açılır",
+        "koruma komutları"
+      ],
+      "cevap": "🔒 **Koruma Sistemleri:**\n• `{{prefix}}reklamengel aç/kapat` - Reklam/link engelle\n• `{{prefix}}küfürengel aç/kapat` - Küfür filtresi\n• `{{prefix}}spamkoruma aç/kapat` - Spam koruması\n• `{{prefix}}raid aç [eşik] [@rol]` - Raid koruması (hızlı katılımda doğrulama)\n• `{{prefix}}ban-koruma #kanal` - Ban koruması log\n• `{{prefix}}rol-koruma #kanal` - Rol silme koruması\n• `{{prefix}}kanal-koruma #kanal` - Kanal silme koruması\n\nTüm korumalar için log kanalı ayarlanmalı: `{{prefix}}mod-log #kanal`"
+    },
+    {
+      "kategori": "ticket",
+      "sorular": [
+        "ticket nasıl açılır",
+        "ticket sistemi",
+        "destek bileti",
+        "ticket komutları",
+        "tikcet nasıl açılır",
+        "ticket nasil acilir",
+        "destek bileti nasıl",
+        "ticket komutlari"
+      ],
+      "cevap": "🎫 **Ticket Sistemi:**\n• Panelden: `{{prefix}}ticket panel` butonuna bas → kategori seç\n• Komutla: `{{prefix}}ticket <sebep>`\n• Kategoriler: Destek 🛠️, Şikayet ⚠️, Öneri 💡, Diğer 📝\n\nAyarlama (Admin):\n• `{{prefix}}ticketayarla kanal #kanal` - Panel kanalı\n• `{{prefix}}ticketayarla kategori #kategori` - Ticket kategorisi\n\nTicket içinde: 🔒 Kapat, ⛔ Sil butonları"
+    },
+    {
+      "kategori": "seviye",
+      "sorular": [
+        "seviye nasıl atlanır",
+        "xp nasıl kazanılır",
+        "seviye ödülleri",
+        "seviye komutları"
+      ],
+      "cevap": "🏆 **Seviye Sistemi:**\n• Mesaj atarak XP kazan (30 sn cooldown, 5-25 XP)\n• Komut kullanarak XP kazan (Premium: +%50)\n• `{{prefix}}seviye [@kullanıcı]` - Seviye kartı\n• `{{prefix}}seviye-sıralama` - Top 10 resimli\n• `{{prefix}}seviye-ödül liste` - Ödülleri gör\n• `{{prefix}}rolal` - Sv.25'te VIP rol al (sunucuda)\n\nÖdüller: Para, VIP rol (sv.25), 1 Yıl Premium (sv.50) 💎"
+    },
+    {
+      "kategori": "premium",
+      "sorular": [
+        "premium ne işe yarar",
+        "premium avantajları",
+        "premium nasıl alınır",
+        "premium fiyatı",
+        "premiun ne işe yarar",
+        "premiun avantajlari",
+        "premiun nasıl alınır",
+        "premium avantajlar",
+        "vip ne işe yarar",
+        "vip avantajları"
+      ],
+      "cevap": "💎 **Premium Avantajları:**\n• +%50 çalış/komut XP ve para bonusu\n• Çift banka faizi (%2 yerine %4)\n• Günlük premium bonus (`{{prefix}}günlük-bonus`)\n• Premium petler (aslan 🦁, kaplan 🐅)\n• Premium koruma (özel koruma şiti)\n• Destek önceliği\n• `{{prefix}}premium-panel` - Tüm avantajları gör\n\n**Alma yolları:**\n• `{{prefix}}premium-al` - Oyun parasıyla (250.000 💸)\n• Site mağazasından: https://risebunny.vercel.app\n• Kupon koduyla: `{{prefix}}kuponkullan <kod>`\n• Sahip verirse: `{{prefix}}premium-ver @kullanıcı [gün]`"
+    },
+    {
+      "kategori": "cekil",
+      "sorular": [
+        "çekiliş nasıl başlatılır",
+        "çekiliş komutları",
+        "giveaway nasıl yapılır",
+        "reroll nedir"
+      ],
+      "cevap": "🎉 **Çekiliş Sistemi:**\n• `{{prefix}}başlat #kanal <süre> <kazanan> <ödül>` - Başlat\n  Örn: `{{prefix}}başlat #çekiliş 1h 1 50000`\n• `{{prefix}}sonlandır <mesajID>` - Bitir\n• `{{prefix}}reroll <mesajID>` - Yeniden çek\n• `{{prefix}}çekiliş-şart #kanal ... --davet 5` - Davet şartlı\n• `{{prefix}}çekiliş-şart #kanal ... --rol @rol` - Rol şartlı\n\nYönetici yetkisi gerekir! 🛡️"
+    },
+    {
+      "kategori": "genel",
+      "sorular": [
+        "saat kaç",
+        "şu an saat kaç",
+        "saati söyle",
+        "zaman nedir"
+      ],
+      "cevap": "🕐 Şu an saat: **{{time}}**\nTarih: **{{date}}**"
+    },
+    {
+      "kategori": "genel",
+      "sorular": [
+        "teşekkürler",
+        "sağol",
+        "eyvallah",
+        "teşekkür ederim",
+        "sağ ol",
+        "teskkürler",
+        "tesekkurler",
+        "sagol",
+        "sag ol"
+      ],
+      "cevap": "Rica ederim {{user}}! 😊\nBaşka bir şey ister misin? `rise <soru>` yazarsan yardımcı olayım."
+    },
+    {
+      "kategori": "genel",
+      "sorular": [
+        "şaka yap",
+        "fıkra anlat",
+        "beni güldür",
+        "espri yap",
+        "şka yap",
+        "şakaa yap",
+        "fikra anlat",
+        "espriyap"
+      ],
+      "cevap": "Programcı neden karanlıkta çalışır? 🤔\nÇünkü **ışıklar kapalıdır**! 💡😂\n\nDaha fazlası için: `{{prefix}}espri` veya `{{prefix}}lafat @kullanıcı`"
+    },
+    {
+      "kategori": "genel",
+      "sorular": [
+        "davet linki",
+        "bot davet",
+        "sunucuya davet et",
+        "botu ekle",
+        "davet lnki",
+        "davet link",
+        "bot daveti",
+        "davet et"
+      ],
+      "cevap": "🤖 Beni sunucuna davet et: https://dsc.gg/risebunny\nDestek sunucumuz: https://dsc.gg/risebunny\nWeb sitemiz: https://risebunny.vercel.app"
+    },
+    {
+      "kategori": "genel",
+      "sorular": [
+        "yardım menüsü",
+        "help menu",
+        "komutları listele",
+        "yardim menusu",
+        "yardım menusu",
+        "yardim menü",
+        "komutları lsitele",
+        "komut listesi"
+      ],
+      "cevap": "📖 **Yardım Menüsü:** `{{prefix}}yardım`\n\nKategoriler:\n• `{{prefix}}ekonomi` - Para sistemleri\n• `{{prefix}}moderasyon` - Yönetim komutları\n• `{{prefix}}kayıtsistemi` - Kayıt sistemi\n• `{{prefix}}korumasistemi` - Koruma sistemleri\n• `{{prefix}}seviye` - Seviye sistemi\n• `{{prefix}}çekilişsistemi` - Çekiliş\n• `{{prefix}}kullanıcı` - Kullanıcı komutları\n\n🤖 **AI ile sohbet:** `rise <soru>` yaz!"
+    },
+    {
+      "kategori": "premium",
+      "sorular": [
+        "premium sürem ne kadar kaldı",
+        "premium durumum",
+        "vip sürem"
+      ],
+      "cevap": "Premium durumun: **{{premium_durum}}**\nKalan süre: **{{premium_kalan}}**\n\nDetay için: `{{prefix}}premium` veya `{{prefix}}sürem`"
+    }
+  ]
+}
