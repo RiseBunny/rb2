@@ -2,6 +2,7 @@ const { EmbedBuilder, PermissionFlagsBits } = require("discord.js");
 const { t, getLang, hasLang, hasGuildLang, hasConsent, komutCoz } = require("../dil");
 const { PREFIX, SAHIP_ID, bakimSebebi, ownerLog, giveCommandXp } = require("../utils");
 const db = require("croxydb");
+const { findClosestCommand } = require("../util/fuzzyMatch");
 
 // NOT: Komut kullanımları otomatik olarak sahip loguna DÜŞMEZ.
 // Yanlış/eksik kullanımlar logu kirletmesin diye her komut SADECE
@@ -21,8 +22,22 @@ module.exports = async message => {
   const perms = typeof client.elevation === "function" ? client.elevation(message) : 0;
 
   // Iki dilli komut cozumleme (TR ad/alias + EN ad/alias)
-  const canonical = komutCoz(client, command);
-  if (!canonical) return;
+  let canonical = komutCoz(client, command);
+
+  // Fuzzy matching: yanlis yazilmis komut icin onerme
+  if (!canonical) {
+    const suggestion = findClosestCommand(command, client, 55);
+    if (suggestion) {
+      const lang = await getLang(message.author.id);
+      const cmd = client.commands.get(suggestion.canonical);
+      const displayName = cmd?.help?.name || suggestion.canonical;
+      const suggestionMsg = lang === "en"
+        ? `Command not found. Did you mean \`${displayName}\`?`
+        : `Böyle bir komut yok. \`${displayName}\` mu demek istediniz?`;
+      return message.reply({ content: suggestionMsg, allowedMentions: { repliedUser: false } }).catch(() => {});
+    }
+    return;
+  }
   const cmd = client.commands.get(canonical);
   if (!cmd) return;
 
