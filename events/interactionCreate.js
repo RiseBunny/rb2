@@ -254,18 +254,43 @@ module.exports = async (interaction) => {
 
       // --- Ticket aç (panel) ---
       if (id === "ticket_ac") {
-        const { acBilet } = require("../komutlar/ticket");
+        const { acBilet, TICKET_KATEGORILER } = require("../komutlar/ticket");
+        const { ActionRowBuilder, StringSelectMenuBuilder } = require("discord.js");
         const lang = await getLang(interaction.user.id);
-        await interaction.deferReply({ ephemeral: true }).catch(() => {});
         const guild = interaction.guild;
         const mevcutId = db.fetch(`ass.${guild.id}.${interaction.user.id}`);
         if (mevcutId && guild.channels.cache.get(mevcutId)) {
           return interaction.editReply({ content: "Zaten açık bir biletin var." }).catch(() => {});
         }
-        // Sebep için varsayılan: modal yerine hızlı bilet (buton akışını bozmamak için)
-        const kanal = await acBilet(interaction.client, guild, interaction.user, "destek", lang, null);
-        if (kanal) return interaction.editReply({ content: `Biletin açıldı: ${kanal}` }).catch(() => {});
-        return interaction.editReply({ content: t(lang, "ortak.hata") }).catch(() => {});
+        // Kategori seçimi için select menü gönder
+        const row = new ActionRowBuilder().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId("ticket_kategori_sec")
+            .setPlaceholder("Ticket kategorisini seçin:")
+            .addOptions(TICKET_KATEGORILER.map(k => ({
+              label: k.label,
+              value: k.id,
+              description: k.description,
+              emoji: k.emoji
+            })))
+        );
+        return interaction.editReply({ content: "🎫 Bilet kategorisini seçin:", components: [row] }).catch(() => {});
+      }
+
+      // Kategori seçildikten sonra bilet aç
+      if (id === "ticket_kategori_sec") {
+        const { acBilet } = require("../komutlar/ticket");
+        const lang = await getLang(interaction.user.id);
+        const guild = interaction.guild;
+        const mevcutId = db.fetch(`ass.${guild.id}.${interaction.user.id}`);
+        if (mevcutId && guild.channels.cache.get(mevcutId)) {
+          return interaction.editReply({ content: "Zaten açık bir biletin var.", components: [] }).catch(() => {});
+        }
+        const kategoriId = interaction.values[0];
+        await interaction.deferReply({ ephemeral: true }).catch(() => {});
+        const kanal = await acBilet(interaction.client, guild, interaction.user, "destek", lang, null, kategoriId);
+        if (kanal) return interaction.editReply({ content: `Biletin açıldı: ${kanal}`, components: [] }).catch(() => {});
+        return interaction.editReply({ content: "Hata oluştu.", components: [] }).catch(() => {});
       }
 
       // --- Ticket kapat / sil ---
