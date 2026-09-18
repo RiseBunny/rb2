@@ -1,16 +1,10 @@
 /**
- * AI Cevap Eşleştirici
- * - cevaplar.json'dan soru-cevap çiftlerini yükler
+ * AI Cevap Eşleştirici - croxydb tabanlı
+ * - Veritabanından soru-cevap çiftlerini yükler
  * - Levenshtein + Jaccard + İçerme bonusu ile en iyi eşleşmeyi bulur
- * - Değişkenleri doldurur ({{time}}, {{user}}, vb.)
  */
-const fs = require("fs");
-const path = require("path");
 const { normalize, preprocess, jaccardSimilarity } = require("./tokenizer");
 
-/**
- * Levenshtein mesafesi (karakter bazlı benzerlik için)
- */
 function levenshtein(a, b) {
   if (!a || !b) return Infinity;
   a = normalize(a);
@@ -29,138 +23,161 @@ function levenshtein(a, b) {
     for (let i = 1; i <= a.length; i++) {
       const cost = a[i - 1] === b[j - 1] ? 0 : 1;
       matrix[j][i] = Math.min(
-        matrix[j][i - 1] + 1,      // silme
-        matrix[j - 1][i] + 1,      // ekleme
-        matrix[j - 1][i - 1] + cost // değiştirme
+        matrix[j][i - 1] + 1,
+        matrix[j - 1][i] + 1,
+        matrix[j - 1][i - 1] + cost
       );
     }
   }
   return matrix[b.length][a.length];
 }
 
-/**
- * İki metin arasında hibrit benzerlik skoru (0-1)
- * - Karakter bazlı (Levenshtein): %30
- * - Kelime bazlı (Jaccard): %50
- * - İçerme bonusu: %20
- */
 function similarity(text1, text2) {
   if (!text1 || !text2) return 0;
 
   const norm1 = normalize(text1);
   const norm2 = normalize(text2);
 
-  // Tam eşleşme
   if (norm1 === norm2) return 1.0;
 
-  // 1) Karakter bazlı benzerlik (Levenshtein)
   const maxLen = Math.max(norm1.length, norm2.length);
   const charScore = maxLen === 0 ? 1 : 1 - levenshtein(norm1, norm2) / maxLen;
 
-  // 2) Kelime bazlı benzerlik (Jaccard)
   const tokens1 = preprocess(text1);
   const tokens2 = preprocess(text2);
   const wordScore = jaccardSimilarity(tokens1, tokens2);
 
-  // 3) İçerme bonusu (bir metin diğerini içeriyorsa)
   const inclusionBonus = (norm1.includes(norm2) || norm2.includes(norm1)) ? 0.2 : 0;
 
-  // Ağırlıklı ortalama
-  const score = (charScore * 0.3) + (wordScore * 0.5) + (inclusionBonus * 0.2);
-  return Math.min(1, score);
+  return Math.min(1, (charScore * 0.3) + (wordScore * 0.5) + (inclusionBonus * 0.2));
 }
 
-class Matcher {
-  /**
-   * @param {string} cevaplarPath - cevaplar.json dosya yolu
-   * @param {Object} options - Ayarlar
-   */
-  constructor(cevaplarPath, options = {}) {
-    this.cevaplarPath = cevaplarPath;
-    this.esik = options.esik || 0.50;           // Minimum benzerlik eşiği (daha esnek)
-    this.maxCevapUzunluk = options.maxCevapUzunluk || 2000;
-    this.data = null;
-    this.load();
+class SoruEslestirici {
+  constructor(db) {
+    this.db = db;
+    this.esik = 0.50;
+    this.cache = new Map();
+    this.cacheTime = 0;
+    this.cacheTTL = 60000; // 1 dakika cache
   }
 
-  /** cevaplar.json'u yükle */
-  load() {
+  /**
+   * Tüm QA çiftlerini croxydb'den getir
+   */
+  tumVerileriGetir() {
+    const now = Date.now();
+    if (this.cache.size > 0 && now - this.cacheTime < this.cacheTTL) {
+      return this.cache.get("all") || [];
+    }
+
     try {
-      const raw = fs.readFileSync(this.cevaplarPath, "utf8");
-      this.data = JSON.parse(raw);
-      const toplamSoru = this.data.cevaplar?.reduce(
-        (acc, c) => acc + (c.sorular?.length || 0), 0
-      ) || 0;
-      console.log(`📚 [AI] cevaplar.json yüklendi: ${this.data.cevaplar?.length || 0} konu, ${toplamSoru} soru kalıbı`);
-    } catch (err) {
-      console.error("❌ [AI] cevaplar.json okunamadı:", err.message);
-      this.data = { cevaplar: [] };
+      const all = this.db.all() || {};
+      const veriler = [];
+
+      for (const [key, value] of Object.entries(all)) {
+        if (key.startsWith("ai_qa_") && value && value.soru && value.cevap) {
+          veriler.push({
+            id: key.replace("ai_qa_", ""),
+            soru: value.soru,
+            cevap: value.cevap,
+            kategori: value.kategori || "genel",
+            kaynak: value.kaynak || "manual",
+            kullanici: value.ekleyen || null,
+            kullanim: value.kullanim || 0,
+            faydali: value.faydali || 0
+          });
+        }
+      }
+
+      this.cache.set("all", veriler);
+      this.cacheTime = now;
+      return veriler;
+    } catch (e) {
+      console.error("[AI] Veri çekme hatası:", e.message);
+      return [];
     }
   }
 
-  /** Hot reload (dosya değişince) */
-  reload() {
-    this.load();
+  /**
+   * Cache'i temizle (yeni veri eklendiğinde)
+   */
+  cacheTemizle() {
+    this.cache.clear();
+    this.cacheTime = 0;
   }
 
   /**
    * Kullanıcı sorusuna en uygun cevabı bul
-   * @param {string} soru - Kullanıcı metni
-   * @returns {{cevap: string, skor: number, eslesenSoru: string, kategori: string} | null}
    */
-  bul(soru) {
-    if (!this.data || !this.data.cevaplar?.length) return null;
+  async bul(soru) {
+    const veriler = this.tumVerileriGetir();
+    if (!veriler.length) return null;
 
-    let enIyi = { skor: 0, cevap: null, eslesenSoru: null, kategori: null };
+    let enIyi = null;
+    let enYuksekSkor = 0;
 
-    for (const kayit of this.data.cevaplar) {
-      if (!kayit.sorular || !kayit.cevap) continue;
-
-      for (const kalip of kayit.sorular) {
-        const skor = similarity(soru, kalip);
-        if (skor > enIyi.skor) {
-          enIyi = {
-            skor,
-            cevap: kayit.cevap,
-            eslesenSoru: kalip,
-            kategori: kayit.kategori || "genel"
-          };
-        }
+    for (const kayit of veriler) {
+      const skor = similarity(soru, kayit.soru);
+      if (skor > enYuksekSkor && skor >= this.esik) {
+        enYuksekSkor = skor;
+        enIyi = {
+          id: kayit.id,
+          soru: kayit.soru,
+          cevap: kayit.cevap,
+          kategori: kayit.kategori,
+          kaynak: kayit.kaynak,
+          skor: skor
+        };
       }
-    }
-
-    // Eşik kontrolü
-    if (enIyi.skor < this.esik || !enIyi.cevap) {
-      return null;
     }
 
     return enIyi;
   }
 
   /**
+   * Çoklu sonuç döndür (admin onayı için)
+   */
+  async cokluBul(soru, limit = 3) {
+    const veriler = this.tumVerileriGetir();
+    if (!veriler.length) return [];
+
+    const skorlu = veriler
+      .map(kayit => ({
+        id: kayit.id,
+        soru: kayit.soru,
+        cevap: kayit.cevap,
+        kategori: kayit.kategori,
+        kaynak: kayit.kaynak,
+        skor: similarity(soru, kayit.soru)
+      }))
+      .filter(r => r.skor >= this.esik);
+
+    skorlu.sort((a, b) => b.skor - a.skor);
+    return skorlu.slice(0, limit);
+  }
+
+  setEsik(deger) {
+    this.esik = Math.max(0, Math.min(1, deger));
+  }
+
+  /**
    * Cevaptaki değişkenleri doldur
-   * Desteklenen: {{time}}, {{date}}, {{user}}, {{mention}}, {{guild}}, {{prefix}}
    */
   degiskenleriDoldur(cevap, message, client) {
     if (!cevap) return cevap;
+    const { getLangSync } = require("../dil");
+    const lang = getLangSync(message.author.id);
     const prefix = process.env.PREFIX || "r!";
     return cevap
-      .replace(/\{\{time\}\}/g, new Date().toLocaleTimeString("tr-TR"))
-      .replace(/\{\{date\}\}/g, new Date().toLocaleDateString("tr-TR"))
+      .replace(/\{\{time\}\}/g, new Date().toLocaleTimeString(lang === "en" ? "en-US" : "tr-TR"))
+      .replace(/\{\{date\}\}/g, new Date().toLocaleDateString(lang === "en" ? "en-US" : "tr-TR"))
       .replace(/\{\{user\}\}/g, message.author?.username || "Kullanıcı")
       .replace(/\{\{mention\}\}/g, message.author ? `<@${message.author.id}>` : "@Kullanıcı")
       .replace(/\{\{guild\}\}/g, message.guild?.name || "DM")
       .replace(/\{\{prefix\}\}/g, prefix)
-      .replace(/\{\{bot\}\}/g, client?.user?.username || "RiseBunny");
-  }
-
-  /** Tüm kategorileri listele */
-  getKategoriler() {
-    if (!this.data?.cevaplar) return [];
-    const kats = new Set();
-    for (const c of this.data.cevaplar) if (c.kategori) kats.add(c.kategori);
-    return [...kats];
+      .replace(/\{\{bot\}\}/g, client?.user?.username || "RiseBunny")
+      .replace(/\{\{ping\}\}/g, client?.ws?.ping || 0);
   }
 }
 
-module.exports = { Matcher, similarity, levenshtein };
+module.exports = SoruEslestirici;
