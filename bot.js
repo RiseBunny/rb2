@@ -280,16 +280,7 @@ const SHOP_CATALOG = {
   "royal-cape":   { tip: "cape", fiyat: 250000, ad: "👑 Royal Pelerini" },
   "bloodmoon-cape": { tip: "cape", fiyat: 350000, ad: "🌙 Blood Moon Pelerini" },
   "frost-cape":   { tip: "cape", fiyat: 450000, ad: "❄️ Frost Pelerini" },
-  "shadow-cape":  { tip: "cape", fiyat: 600000, ad: "🌑 Shadow Pelerini" },
-  "bat-wings":    { tip: "wing", fiyat: 200000, ad: "🦇 Bat Wings" },
-  "angel-wings":  { tip: "wing", fiyat: 350000, ad: "😇 Angel Wings" },
-  "demon-wings":  { tip: "wing", fiyat: 500000, ad: "😈 Demon Wings" },
-  "dragon-gold":    { tip: "wing", fiyat: 300000, ad: "🐲 Dragon Wings (Golden)" },
-  "dragon-emerald": { tip: "wing", fiyat: 350000, ad: "🐲 Dragon Wings (Emerald)" },
-  "dragon-frost":   { tip: "wing", fiyat: 400000, ad: "🐲 Dragon Wings (Frost)" },
-  "dragon-crimson": { tip: "wing", fiyat: 450000, ad: "🐲 Dragon Wings (Crimson)" },
-  "dragon-void":    { tip: "wing", fiyat: 550000, ad: "🐲 Dragon Wings (Void)" },
-  "dragon-shadow":  { tip: "wing", fiyat: 600000, ad: "🐲 Dragon Wings (Shadow)" }
+  "shadow-cape":  { tip: "cape", fiyat: 600000, ad: "🌑 Shadow Pelerini" }
 };
 // Efektif ürün: varsayılan + sahip geçersiz kılmaları (magaza_<id> = {fiyat, gorunur})
 function _magaza(id) {
