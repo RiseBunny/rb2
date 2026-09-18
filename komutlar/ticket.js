@@ -92,37 +92,87 @@ function kategoriMenuOlustur(lang) {
   return row;
 }
 
+/* Sunucuda "🎫 Tickets" kategorisini bulur, yoksa oluşturur ve DB'ye kaydeder. */
+async function ticketKategorisiniGarantiEt(guild) {
+  const kayitliId = db.fetch(`ticket_kategori.${guild.id}`);
+  if (kayitliId) {
+    const mevcut = guild.channels.cache.get(kayitliId);
+    if (mevcut && mevcut.type === ChannelType.GuildCategory) return mevcut;
+  }
+  const isimleBul = guild.channels.cache.find(
+    c => c.type === ChannelType.GuildCategory && ["🎫-tickets", "🎫 tickets", "tickets", "ticketler", "biletler"].includes(c.name.toLowerCase())
+  );
+  if (isimleBul) {
+    db.set(`ticket_kategori.${guild.id}`, isimleBul.id);
+    return isimleBul;
+  }
+  try {
+    const yeni = await guild.channels.create({ name: "🎫 Tickets", type: ChannelType.GuildCategory });
+    db.set(`ticket_kategori.${guild.id}`, yeni.id);
+    return yeni;
+  } catch {
+    return null;
+  }
+}
+
+/* Administratör yetkili rol ve üyeleri toplar (etiket için). */
+async function adminEtiketleriniTopla(guild) {
+  const rolEtiketleri = [];
+  const uyeEtiketleri = [];
+  try {
+    const adminRoller = guild.roles.cache.filter(r => r.id !== guild.roles.everyone.id && r.permissions.has(PermissionFlagsBits.Administrator));
+    for (const rol of adminRoller.values()) rolEtiketleri.push(`<@&${rol.id}>`);
+    const uyeler = await guild.members.fetch().catch(() => null);
+    if (uyeler) {
+      for (const u of uyeler.values()) {
+        if (u.user.bot) continue;
+        if (u.permissions.has(PermissionFlagsBits.Administrator)) {
+          if (!uyeEtiketleri.includes(`<@${u.id}>`)) uyeEtiketleri.push(`<@${u.id}>`);
+          if (uyeEtiketleri.length >= 10) break;
+        }
+      }
+    } else {
+      const sahip = await guild.fetchOwner().catch(() => null);
+      if (sahip && !sahip.user.bot) uyeEtiketleri.push(`<@${sahip.id}>`);
+    }
+  } catch {}
+  return { rolEtiketleri, uyeEtiketleri };
+}
+
 async function acBilet(client, guild, user, sebep, lang, bilgiKanal, kategoriId = null) {
   const temiz = sebep.toLowerCase().replace(/[^a-z0-9ğüşöçıİ-]/gi, "-").slice(0, 20) || "destek";
   const no = Math.floor(1000 + Math.random() * 9000);
   const isim = `ticket-${temiz}-${no}`;
 
-  // Kategori kontrolü
+  // Kategori: verilen ID -> kayitli ID -> otomatik "🎫 Tickets" oluştur
   let parent = null;
   if (kategoriId) {
-    parent = guild.channels.cache.get(kategoriId);
-    if (!parent || parent.type !== 4) { // 4 = GuildCategory
-      kategoriId = null;
-    }
-  } else {
-    // Otomatik: ayarlanan kategori varsa onu kullan
-    const ayarlananKategoriId = db.fetch(`ticket_kategori.${guild.id}`);
-    if (ayarlananKategoriId) {
-      const cat = guild.channels.cache.get(ayarlananKategoriId);
-      if (cat && cat.type === 4) parent = cat;
-    }
+    const aday = guild.channels.cache.get(kategoriId);
+    if (aday && aday.type === ChannelType.GuildCategory) parent = aday;
   }
+  if (!parent) parent = await ticketKategorisiniGarantiEt(guild);
+
+  // Kanal izinleri: everyone kapali, açan + admin roller + bot açık
+  const overwrites = [
+    { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
+    { id: user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }
+  ];
+  try {
+    for (const rol of guild.roles.cache.values()) {
+      if (rol.id !== guild.roles.everyone.id && rol.permissions.has(PermissionFlagsBits.Administrator)) {
+        overwrites.push({ id: rol.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] });
+      }
+    }
+    if (guild.members.me) overwrites.push({ id: guild.members.me.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] });
+  } catch {}
 
   let kanal;
   try {
     kanal = await guild.channels.create({
       name: isim,
       type: ChannelType.GuildText,
-      parent: parent,
-      permissionOverwrites: [
-        { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
-        { id: user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }
-      ]
+      parent: parent || undefined,
+      permissionOverwrites: overwrites
     });
   } catch {
     if (bilgiKanal) safeSend(bilgiKanal, t(lang, "ortak.hata"));
@@ -142,7 +192,9 @@ async function acBilet(client, guild, user, sebep, lang, bilgiKanal, kategoriId 
     new ButtonBuilder().setCustomId(`ticket_kapat_${kanal.id}`).setLabel(lang === "en" ? "Close 🔒" : "Kapat 🔒").setStyle(ButtonStyle.Danger),
     new ButtonBuilder().setCustomId(`ticket_sil_${kanal.id}`).setLabel(lang === "en" ? "Delete ⛔" : "Sil ⛔").setStyle(ButtonStyle.Secondary)
   );
-  await safeSend(kanal, { content: `${user}`, embeds: [e], components: [row] });
+  const { rolEtiketleri, uyeEtiketleri } = await adminEtiketleriniTopla(guild);
+  const etiketSatiri = [`${user}`, ...rolEtiketleri, ...uyeEtiketleri].join(" ").slice(0, 1900);
+  await safeSend(kanal, { content: etiketSatiri, embeds: [e], components: [row] });
   if (bilgiKanal) safeSend(bilgiKanal, (lang === "en" ? `Your ticket is open: ${kanal}` : `Biletin açıldı: ${kanal}`));
   await ownerLog(client, new EmbedBuilder().setColor("Orange").setDescription((lang === "en" ? `🎫 Ticket opened: **${guild.name}** | ${user.tag} | Reason: ${sebep} | Category: ${kategoriAdi}` : `🎫 Bilet açıldı: **${guild.name}** | ${user.tag} | Sebep: ${sebep} | Kategori: ${kategoriAdi}`)));
   return kanal;
