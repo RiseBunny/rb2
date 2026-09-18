@@ -114,7 +114,14 @@ module.exports = {
     kapatildi: "Ticket closed by {kullanici}.",
     tekrarAcildi: "Ticket re-opened by {kullanici}.",
     silinecek: "Ticket will be fully deleted in 5 seconds.",
-    cooldown: "You can open one ticket every 5 seconds!"
+    cooldown: "You can open one ticket every 5 seconds!",
+    kategoriSec: "Select ticket category:",
+    kategoriDestek: "Support",
+    kategoriSikayet: "Complaint",
+    kategoriOneri: "Suggestion",
+    kategoriDiger: "Other",
+    kategoriYok: "Ticket category not set. To set it: {prefix}ticketayarla category #category",
+    kategoriOk: "Ticket category set successfully: {kategori}"
   },
   premium: {
     aktif: "Your VIP membership has been activated for 30 days.",

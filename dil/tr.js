@@ -114,7 +114,14 @@ module.exports = {
     kapatildi: "Bilet {kullanici} tarafindan kapatildi.",
     tekrarAcildi: "Bilet {kullanici} tarafindan tekrar acildi.",
     silinecek: "Bilet 5 saniye sonra tamamen silinecek.",
-    cooldown: "5 saniyede bir bilet acilabilir!"
+    cooldown: "5 saniyede bir bilet acilabilir!",
+    kategoriSec: "Bilet kategorisini secin:",
+    kategoriDestek: "Destek",
+    kategoriSikayet: "Şikayet",
+    kategoriOneri: "Öneri",
+    kategoriDiger: "Diğer",
+    kategoriYok: "Kategori ayarlanmamis. Ayarlamak icin: {prefix}ticketayarla kategori #kategori",
+    kategoriOk: "Ticket kategorisi basariyla ayarlandi: {kategori}"
   },
   premium: {
     aktif: "VIP uyeligin 30 gunlugune aktiflestirildi.",
