@@ -1,0 +1,28 @@
+{
+  "name": "otomasyon-bot",
+  "version": "1.0.0",
+  "description": "Topluluk Destekli AI Ticket Sistemi - Otomasyon",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js",
+    "dev": "node bot.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "better-sqlite3": "^9.4.3",
+    "dotenv": "^16.3.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "discord",
+    "bot",
+    "ai",
+    "ticket",
+    "automation",
+    "community"
+  ],
+  "author": "Otomasyon Team",
+  "license": "MIT"
+}
