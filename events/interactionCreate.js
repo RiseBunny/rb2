@@ -115,6 +115,22 @@ module.exports = async (interaction) => {
         try { const { ownerLog } = require("../utils"); ownerLog(interaction.client, `🗑️ **Kupon silindi (panel):** \`${kod}\` (${interaction.user.tag})`).catch(() => {}); } catch {}
         return interaction.reply({ content: EN ? `Coupon \`${kod}\` deleted. ✅` : `\`${kod}\` kuponu silindi. ✅`, ephemeral: true }).catch(() => {});
       }
+
+      // --- Ticket kategori seçimi ---
+      if (interaction.customId === "ticket_kategori_sec") {
+        const { acBilet } = require("../komutlar/ticket");
+        const lang = await getLang(interaction.user.id);
+        const guild = interaction.guild;
+        const mevcutId = db.fetch(`ass.${guild.id}.${interaction.user.id}`);
+        if (mevcutId && guild.channels.cache.get(mevcutId)) {
+          return interaction.update({ content: "Zaten açık bir biletin var.", components: [] }).catch(() => {});
+        }
+        const kategoriId = interaction.values[0];
+        await interaction.deferReply({ ephemeral: true }).catch(() => {});
+        const kanal = await acBilet(interaction.client, guild, interaction.user, "destek", lang, null, kategoriId);
+        if (kanal) return interaction.editReply({ content: `Biletin açıldı: ${kanal}`, components: [] }).catch(() => {});
+        return interaction.editReply({ content: "Hata oluştu.", components: [] }).catch(() => {});
+      }
     }
 
     if (interaction.isButton()) {
@@ -275,22 +291,6 @@ module.exports = async (interaction) => {
             })))
         );
         return interaction.editReply({ content: "🎫 Bilet kategorisini seçin:", components: [row] }).catch(() => {});
-      }
-
-      // Kategori seçildikten sonra bilet aç
-      if (id === "ticket_kategori_sec") {
-        const { acBilet } = require("../komutlar/ticket");
-        const lang = await getLang(interaction.user.id);
-        const guild = interaction.guild;
-        const mevcutId = db.fetch(`ass.${guild.id}.${interaction.user.id}`);
-        if (mevcutId && guild.channels.cache.get(mevcutId)) {
-          return interaction.editReply({ content: "Zaten açık bir biletin var.", components: [] }).catch(() => {});
-        }
-        const kategoriId = interaction.values[0];
-        await interaction.deferReply({ ephemeral: true }).catch(() => {});
-        const kanal = await acBilet(interaction.client, guild, interaction.user, "destek", lang, null, kategoriId);
-        if (kanal) return interaction.editReply({ content: `Biletin açıldı: ${kanal}`, components: [] }).catch(() => {});
-        return interaction.editReply({ content: "Hata oluştu.", components: [] }).catch(() => {});
       }
 
       // --- Ticket kapat / sil ---
