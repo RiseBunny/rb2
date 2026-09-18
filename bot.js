@@ -1,5 +1,6 @@
 require("dotenv").config();
 console.log("[Boot] RiseBunny v2.1.1 (kupon-fix) yükleniyor...");
+const path = require("path");
 const croxydb = require("croxydb");
 if (!croxydb.fetch) croxydb.fetch = croxydb.get;
 if (!croxydb.get) croxydb.get = croxydb.fetch;
