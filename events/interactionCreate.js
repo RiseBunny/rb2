@@ -660,6 +660,13 @@ module.exports = async (interaction) => {
     return learnButonIsle(interaction, interaction.client);
   }
 
+  // 🤖 Owner AI butonları (kaydet/sil/öğret)
+  if (interaction.isButton()) {
+    const { ownerButonIsle } = require("../ai/handler");
+    const handled = await ownerButonIsle(interaction, interaction.client);
+    if (handled) return;
+  }
+
   // Modal submit (ileride ticket sebep modalı için hazır)
   if (interaction.isModalSubmit() && interaction.customId === "ticket_sebep") {
       const sebep = interaction.fields.getTextInputValue("sebep") || "destek";
@@ -670,6 +677,12 @@ module.exports = async (interaction) => {
       if (kanal) return interaction.editReply({ content: `Biletin açıldı: ${kanal}` }).catch(() => {});
       return interaction.editReply({ content: t(lang, "ortak.hata") }).catch(() => {});
     }
+  
+  // Owner AI öğret modal handler
+  if (interaction.isModalSubmit()) {
+    const { ownerModalIsle } = require("../ai/handler");
+    return ownerModalIsle(interaction, interaction.client);
+  }
   } catch (e) {
     console.error("Interaction hatası:", e.message);
     try { if (!interaction.replied) await interaction.reply({ content: "Hata oluştu.", ephemeral: true }); } catch {}

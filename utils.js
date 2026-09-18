@@ -112,7 +112,12 @@ async function ownerLog(client, payload) {
     } else if (payload instanceof EmbedBuilder) {
       await kanal.send({ embeds: [payload] }).catch(() => {});
     } else {
-      await kanal.send(payload).catch(() => {});
+      // Yeni format: { content, embeds, components }
+      await kanal.send({
+        content: payload.content,
+        embeds: payload.embeds,
+        components: payload.components
+      }).catch(() => {});
     }
   } catch {}
 }
