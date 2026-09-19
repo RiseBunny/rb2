@@ -1,8 +1,8 @@
 const { createCanvas, loadImage } = require('@napi-rs/canvas');
-const { AttachmentBuilder } = require('discord.js');
+const { AttachmentBuilder, EmbedBuilder } = require('discord.js');
 const db = require('croxydb');
 const { getLangSync } = require("../dil");
-const { xpSeviye, xpGerekli, SEVIYE_ODULLERI } = require("../utils");
+const { xpSeviye, xpGerekli, xpToplam, SEVIYE_ODULLERI } = require("../utils");
 
 async function seviyeKarti(uye, xp, seviye, lang) {
   const EN = lang === "en";
@@ -37,11 +37,12 @@ async function seviyeKarti(uye, xp, seviye, lang) {
   ctx.font = '22px Arial';
   ctx.fillText(`${EN ? "Level" : "Seviye"}: ${seviye}`, 200, 125);
 
-  // XP ilerleme çubuğu
-  const oncekiGerekli = 100 * (seviye - 1) * (seviye - 1);
-  const gerekli = xpGerekli(seviye);
-  const mevcut = Math.max(0, xp - oncekiGerekli);
-  const oran = Math.min(1, mevcut / gerekli);
+  // XP ilerleme çubuğu (yeni formül: xpToplam)
+  const oncekiToplam = xpToplam(seviye - 1);
+  const gerekliToplam = xpToplam(seviye);
+  const mevcut = Math.max(0, xp - oncekiToplam);
+  const seviyeIcinGerekli = gerekliToplam - oncekiToplam;
+  const oran = Math.min(1, mevcut / seviyeIcinGerekli);
 
   ctx.fillStyle = '#00000055';
   ctx.fillRect(200, 150, 440, 26);
@@ -52,7 +53,7 @@ async function seviyeKarti(uye, xp, seviye, lang) {
 
   ctx.fillStyle = '#ffffff';
   ctx.font = '16px Arial';
-  ctx.fillText(`${mevcut.toLocaleString()} / ${gerekli.toLocaleString()} XP`, 200, 195);
+  ctx.fillText(`${mevcut.toLocaleString()} / ${seviyeIcinGerekli.toLocaleString()} XP`, 200, 195);
 
   // Sonraki ödül
   let sonrakiOdul = null;

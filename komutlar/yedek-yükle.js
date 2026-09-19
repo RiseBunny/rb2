@@ -49,5 +49,5 @@ exports.run = async (client, message) => {
   }
 };
 
-exports.conf = { enabled: true, guildOnly: false, aliases: ["yedek-yukle", "yedekgeri-yukle", "restore"], permLevel: 4, kategori: "sahip" };
+exports.conf = { enabled: true, guildOnly: false, aliases: ["yedek-yukle", "yedekgeri-yukle", "restore"], permLevel: 5, kategori: "sahip" };
 exports.help = { name: "yedek-yükle", description: "Tam yedek dosyasını croxydb'ye geri yükler (sahip).", usage: "yedek-yükle + dosya eki" };

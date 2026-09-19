@@ -39,5 +39,5 @@ exports.run = async (client, message) => {
   }
 };
 
-exports.conf = { enabled: true, guildOnly: false, aliases: ["yedek-al", "backup"], permLevel: 4, kategori: "sahip" };
+exports.conf = { enabled: true, guildOnly: false, aliases: ["yedek-al", "backup"], permLevel: 5, kategori: "sahip" };
 exports.help = { name: "yedek", description: "croxydb'nin TÜM verisini JSON olarak DM'ine yedekler (sahip).", usage: "yedek" };
