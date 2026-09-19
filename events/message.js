@@ -101,6 +101,7 @@ module.exports = async message => {
   const userNeedsLang = !hasLang(message.author.id);
   const guildNeedsLang = isOwner && !hasGuildLang(message.guild.id);
 
+  // 1. ÖNCE DİL SEÇİMİ - dil seçilmemişse dil paneli göster (onay butonları YOK)
   if (canonical !== "dil" && !sahipBypass && (userNeedsLang || guildNeedsLang)) {
     try {
       const { dilPaneli } = require("../komutlar/dil");
@@ -110,13 +111,14 @@ module.exports = async message => {
     }
   }
 
-  // Veri işleme onayı (dil + yardım serbest, gerisi onay ister)
+  // 2. SONRA ONAY - dil seçilmişse ama onay verilmemişse onay paneli göster (dil seçili, onay butonları VAR)
   if (canonical !== "dil" && canonical !== "yardım" && !sahipBypass) {
     if (!hasConsent(message.author.id)) {
       const ulang = await getLang(message.author.id);
       try {
         const { dilPaneli } = require("../komutlar/dil");
-        await message.reply(dilPaneli(prefix, { isOwner, userNeedsLang: userNeedsLang || true, guildNeedsLang })).catch(() => {});
+        // userNeedsLang: false çünkü dil zaten seçili
+        await message.reply(dilPaneli(prefix, { isOwner, userNeedsLang: false, guildNeedsLang })).catch(() => {});
       } catch {}
       return message.reply(t(ulang, "onay.gerekli")).catch(() => {});
     }

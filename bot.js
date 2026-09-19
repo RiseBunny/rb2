@@ -866,8 +866,10 @@ client.elevation = (message) => {
   if (!message.guild) return 0;
   let lvl = 0;
   try {
-    if (message.member.permissions.has(Discord.PermissionFlagsBits.BanMembers)) lvl = 2;
-    if (message.member.permissions.has(Discord.PermissionFlagsBits.Administrator)) lvl = 3;
+    if (message.member.permissions.has(Discord.PermissionFlagsBits.ManageMessages)) lvl = 1;
+    if (message.member.permissions.has(Discord.PermissionFlagsBits.KickMembers)) lvl = 2;
+    if (message.member.permissions.has(Discord.PermissionFlagsBits.BanMembers)) lvl = 3;
+    if (message.member.permissions.has(Discord.PermissionFlagsBits.Administrator)) lvl = 4;
     if (message.author.id === U.SAHIP_ID) lvl = 5;
   } catch {}
   return lvl;
