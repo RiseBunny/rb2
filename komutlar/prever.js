@@ -17,5 +17,5 @@ exports.run = async (client, message, args) => {
   await ownerLog(client, new EmbedBuilder().setColor("Gold").setDescription((lang === "en" ? `💎 Premium given: **${target.tag}** (${target.id}) | By: ${message.author.tag} | Duration: ${gun} days` : `💎 Premium verildi: **${target.tag}** (${target.id}) | Veren: ${message.author.tag} | Süre: ${gun} gün`)));
 };
 
-exports.conf = { enabled: true, guildOnly: false, aliases: ["prever", "verpremium", "premiumver"], permLevel: 4, kategori: "premium" };
+exports.conf = { enabled: true, guildOnly: false, aliases: ["prever", "verpremium", "premiumver"], permLevel: 5, kategori: "premium" };
 exports.help = { name: "premium-ver", description: "Belirtilen kullanıcıya premium verir (sahip).", usage: "premium-ver <@kullanıcı> [gün]" };
