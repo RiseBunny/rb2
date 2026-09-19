@@ -50,7 +50,12 @@ module.exports = async message => {
 
   // 👑 Admin etiketleme karşılama (otomasyon kurulu sunucuda)
   // Komut ve rise mesajlarında tetiklenmez (onları kendi akışları karşılar)
-  if (!message.content.startsWith(prefix) && !message.content.toLowerCase().startsWith("rise")) {
+  // AMA admin etiketlenirse rise komutunda bile çalışmalı
+  const isAdminMention = message.mentions.users?.some(u => 
+    !u.bot && u.id !== message.author.id && u.id !== client.user?.id
+  );
+  
+  if (isAdminMention) {
     try {
       const { otomasyonDurum } = require("../komutlar/otomasyon");
       const oto = otomasyonDurum(message.guild.id);
