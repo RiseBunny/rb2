@@ -15,9 +15,12 @@ const OPENROUTER_MODELS = [
   "deepseek/deepseek-chat-v3-0324:free",
   "meta-llama/llama-3.3-70b-instruct:free",
   "qwen/qwen-2.5-72b-instruct:free",
-  "meta-llama/llama-3.1-405b-instruct:free",
+  "meta-llama/llama-3.1-8b-instruct:free",
   "mistralai/mistral-7b-instruct:free",
-  "google/gemma-2-9b-it:free"
+  "google/gemma-2-9b-it:free",
+  "microsoft/phi-3-mini-128k-instruct:free",
+  "huggingfaceh4/zephyr-7b-beta:free",
+  "nousresearch/nous-hermes-2-mixtral-8x7b-dpo:free"
 ];
 
 const PROVIDERS = [

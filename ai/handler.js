@@ -120,6 +120,7 @@ function egitimVerileriniHazirla(guildId = null) {
     const all = db.all() || {};
     const sunucuVeriler = [];
     const genelVeriler = [];
+    const ownerVeriler = []; // Sahip onaylı veriler (öncelikli)
 
     // 0. Bu sunucuya özel eğitim verileri ÖNCE (her sunucu özelleşmiş olur)
     if (guildId) {
@@ -130,15 +131,21 @@ function egitimVerileriniHazirla(guildId = null) {
       }
     }
 
-    // 1. Croxydb'den öğrenilen veriler (ai_qa_*)
+    // 1. Croxydb'den öğrenilen veriler (ai_qa_*) - SAHİP ONAYLI ÖNCELİKLİ
     for (const [key, value] of Object.entries(all)) {
       if (key.startsWith("ai_qa_") && value && value.soru && value.cevap) {
-        genelVeriler.push({
+        const item = {
           soru: value.soru,
           cevap: prefixTemizle(value.cevap),
           kategori: value.kategori || "genel",
-          kaynak: "learned"
-        });
+          kaynak: value.kaynak || "learned"
+        };
+        // Sahip onaylı/taught verileri ayrı listeye al (öncelikli)
+        if (value.kaynak === "owner_approved" || value.kaynak === "owner_taught") {
+          ownerVeriler.push(item);
+        } else {
+          genelVeriler.push(item);
+        }
       }
     }
 
@@ -167,6 +174,14 @@ function egitimVerileriniHazirla(guildId = null) {
     if (sunucuVeriler.length) {
       output += "\n## BU SUNUCUYA ÖZEL EĞİTİM (öncelikli kullan)\n";
       for (const item of sunucuVeriler.slice(0, 30)) {
+        output += `Q: ${item.soru}\nA: ${item.cevap}\n\n`;
+      }
+    }
+
+    // Sahip onaylı veriler ikinci sırada (çok önemli - en doğru cevaplar)
+    if (ownerVeriler.length) {
+      output += "\n## SAHİP ONAYLI CEVAPLAR (EN YÜKSEK ÖNCELİK)\n";
+      for (const item of ownerVeriler.slice(0, 50)) {
         output += `Q: ${item.soru}\nA: ${item.cevap}\n\n`;
       }
     }
