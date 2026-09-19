@@ -197,7 +197,7 @@ exports.run = async (client, message, args) => {
   // Zaten kuruluysa tekrar kurulamaz
   if (mevcut?.aktif && !mevcut.duraklatildi) {
     const { soru } = sunucuSayilari(gid);
-    return message.reply(t(lang, "otomasyon.zatenKurulu", { sayi: soru })).catch(() => {});
+    return message.reply(t(lang, "otomasyon.zatenKurulu", { sayi: soru }) + `\n\n💡 **${t(lang, "otomasyon.ogretKullanim")}**\n\`r!otomasyon öğret soru | cevap\``).catch(() => {});
   }
   // Duraklatılmışsa ve premium yenilenmişse devam et
   if (mevcut?.aktif && mevcut.duraklatildi) {

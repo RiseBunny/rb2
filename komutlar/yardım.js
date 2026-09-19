@@ -47,6 +47,24 @@ function kategoriListesi(client, lang, katId) {
   return satirlar;
 }
 
+/** AI komutlarını öne çıkararak listeler */
+function aiKomutListesi(lang) {
+  const EN = lang === "en";
+  const aiKomutlar = [
+    { canonical: "otomasyon", label: EN ? "🤖 AI Server Training" : "🤖 Sunucuya Özel AI Eğitimi", desc: EN ? "Train AI with your server's Q&A" : "Sunucunuzun soru-cevaplarıyla AI eğitin" },
+    { canonical: "cevir", label: EN ? "🌐 AI Translate" : "🌐 AI Çeviri", desc: EN ? "Translate text with AI" : "AI ile metin çevirin" },
+    { canonical: "y-kayıt-sistem", label: EN ? "📝 AI Registration" : "📝 AI Kayıt Sistemi", desc: EN ? "AI-powered registration system" : "Yapay zeka destekli kayıt sistemi" },
+    { canonical: "y-koruma", label: EN ? "🛡️ AI Protection" : "🛡️ AI Koruma", desc: EN ? "AI-based server protection" : "Yapay zeka tabanlı koruma" },
+    { canonical: "y-otosistem", label: EN ? "⚙️ AI Auto Setup" : "⚙️ AI Otomatik Kurulum", desc: EN ? "Auto-setup AI registration" : "AI kayıt sistemini otomatik kur" }
+  ];
+  
+  return aiKomutlar.map(k => {
+    const b = komutBilgi(lang, k.canonical);
+    const cmd = b ? komutAdi(lang, k.canonical) : k.canonical;
+    return `**${k.label}** — \`${PREFIX}${cmd}\`\n  ${k.desc}`;
+  }).join("\n\n");
+}
+
 exports.run = async (client, message, args) => {
   const lang = await getLang(message.author.id);
   const uyelik = isPremium(message.author.id) ? "💎 Premium" : "Normal";
@@ -84,6 +102,10 @@ exports.run = async (client, message, args) => {
     .setColor("Random")
     .setThumbnail(message.author.displayAvatarURL())
     .setDescription(t(lang, "yardim.aciklama", { kullanici: `${message.author}`, prefix: PREFIX, uyelik }))
+    .addFields({
+      name: `🤖 ${EN ? "AI FEATURES — NEW!" : "AI ÖZELLİKLERİ — YENİ!"}`,
+      value: aiKomutListesi(lang)
+    })
     .addFields({
       name: `🚀 ${EN ? "V2.0 UPDATE — NOW LIVE!" : "V2.0 GÜNCELLEMESİ YAYINDA!"}`,
       value: EN
