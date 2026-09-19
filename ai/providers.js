@@ -6,20 +6,22 @@
 const fetch = require("node-fetch");
 
 const NVIDIA_MODELS = [
-  "meta/llama-3.1-8b-instruct",
-  "meta/llama-4-maverick-17b-128e-instruct",
-  "openai/gpt-oss-20b",
-  "nvidia/nvidia-nemotron-nano-9b-v2",
-  "meta/llama-3.3-70b-instruct",
-  "mistralai/mixtral-8x22b-instruct-v0.1"
+  "openai/gpt-oss-20b"
+];
+
+const OPENROUTER_MODELS = [
+  "deepseek/deepseek-r1:free",
+  "deepseek/deepseek-chat-v3-0324:free",
+  "meta-llama/llama-3.3-70b-instruct:free",
+  "qwen/qwen-2.5-72b-instruct:free"
 ];
 
 const PROVIDERS = [
   { name: "groq", key: "GROQ_API_KEY", url: "https://api.groq.com/openai/v1/chat/completions", model: "openai/gpt-oss-20b", type: "openai" },
   { name: "nvidia", key: "NVIDIA_API_KEY", url: "https://integrate.api.nvidia.com/v1/chat/completions", models: NVIDIA_MODELS, modelIndex: 0, type: "openai" },
-  { name: "gemini", key: "GEMINI_API_KEY", url: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent", type: "gemini", fallbackUrl: "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent" },
-  { name: "cerebras", key: "CEREBRAS_API_KEY", url: "https://api.cerebras.ai/v1/chat/completions", model: "llama-3.3-70b", type: "openai" },
-  { name: "openrouter", key: "OPENROUTER_API_KEY", url: "https://openrouter.ai/api/v1/chat/completions", model: "meta-llama/llama-3.3-70b-instruct:free", type: "openai" },
+  { name: "gemini", key: "GEMINI_API_KEY", url: "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent", type: "gemini", fallbackUrl: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent" },
+  { name: "cerebras", key: "CEREBRAS_API_KEY", url: "https://api.cerebras.ai/v1/chat/completions", model: "qwen-3.8-27b", type: "openai" },
+  { name: "openrouter", key: "OPENROUTER_API_KEY", url: "https://openrouter.ai/api/v1/chat/completions", models: OPENROUTER_MODELS, modelIndex: 0, type: "openai" },
 ];
 
 // Round-robin başlangıç indeksi (global, sona gelince başa döner)
