@@ -2,6 +2,29 @@ const { EmbedBuilder, PermissionFlagsBits, ChannelType } = require("discord.js")
 const db = require("croxydb");
 const { getLangSync, t } = require("../dil");
 const { isPremium, SAHIP_ID, ownerLog } = require("../utils");
+const { ticketKategorisiniGarantiEt } = require("./ticket");
+
+/* Kategori çözümle: etiket > ham ID > otomatik kurulum.
+   Ticket sistemi kurulu değilse kategoriyi direkt oluşturur. */
+async function kategoriCoz(message, lang, gid, txt) {
+  // 1. Etiket
+  let kg = message.mentions.channels.find(c => c.type === ChannelType.GuildCategory) || null;
+  if (kg) return { kategori: kg, otomatik: false };
+  // 2. Ham ID (örn: 123456789012345678)
+  const idAday = String(txt || "").replace(/\D/g, "");
+  if (idAday) {
+    const aday = message.guild.channels.cache.get(idAday) || await message.guild.channels.fetch(idAday).catch(() => null);
+    if (aday && aday.type === ChannelType.GuildCategory) return { kategori: aday, otomatik: false };
+    return { hata: true };
+  }
+  // 3. ID de yoksa: ticket sistemi kurulu değilse direkt otomatik kur
+  const kayitliId = db.fetch(`ticket_kategori.${gid}`);
+  const kayitli = kayitliId ? (message.guild.channels.cache.get(kayitliId) || await message.guild.channels.fetch(kayitliId).catch(() => null)) : null;
+  if (kayitli && kayitli.type === ChannelType.GuildCategory) return { kategori: kayitli, otomatik: false };
+  const olusan = await ticketKategorisiniGarantiEt(message.guild);
+  if (olusan) return { kategori: olusan, otomatik: true };
+  return { hata: true };
+}
 
 /* Otomasyon durumunu döndürür; kuran premiumu bitmişse DURAKLAT (veri silinmez). */
 function otomasyonDurum(guildId) {
@@ -130,9 +153,10 @@ exports.run = async (client, message, args) => {
     const metinKanallar = [...message.mentions.channels.filter(c => c.isTextBased?.()).values()];
     const kanal = metinKanallar[0];
     const modlog = metinKanallar[1] || null;
-    const kategori = message.mentions.channels.find(c => c.type === ChannelType.GuildCategory);
     if (!kanal) return message.reply(t(lang, "otomasyon.ayarKanalYok")).catch(() => {});
-    if (!kategori) return message.reply(t(lang, "otomasyon.ayarKategoriYok")).catch(() => {});
+    const katCozum = await kategoriCoz(message, lang, gid, args.slice(1).join(" "));
+    if (katCozum.hata || !katCozum.kategori) return message.reply(t(lang, "otomasyon.kategoriIdYok")).catch(() => {});
+    const kategori = katCozum.kategori;
     const kayit = db.fetch(`otomasyon_${gid}`) || {};
     kayit.noAnswerKanal = kanal.id;
     kayit.ticketKategori = kategori.id;
@@ -140,6 +164,7 @@ exports.run = async (client, message, args) => {
     try { db.set(`otomasyon_${gid}`, kayit); } catch {}
     try { ownerLog(client, `⚙️ **Otomasyon ayar:** **${message.guild.name}** (${gid}) — ${message.author.tag} — no-answer: #${kanal.name}, kategori: ${kategori.name}${modlog ? `, modlog: #${modlog.name}` : ""}`).catch(() => {}); } catch {}
     try { modlogGonder(message.guild, t(lang, "otomasyon.ayarOk", { kanal: `${kanal}`, kategori: `${kategori}` })); } catch {}
+    if (katCozum.otomatik) await message.channel.send(t(lang, "ticket.kategoriOtomatik", { kategori: `${kategori}` })).catch(() => {});
     return message.reply(t(lang, "otomasyon.ayarOk", { kanal: `${kanal}`, kategori: `${kategori}` })).catch(() => {});
   }
 
@@ -239,9 +264,12 @@ exports.run = async (client, message, args) => {
           collector.stop("bitti"); return kurulumBitir(client, message, lang, gid, state);
         }
       } else if (state.asama === "kategori") {
-        const kg = m.mentions.channels.find(c => c.type === ChannelType.GuildCategory);
-        if (!kg) { await message.channel.send(t(lang, "otomasyon.ayarKategoriYok")).catch(() => {}); return; }
-        state.kategori = kg.id;
+        const cozum = await kategoriCoz(m, lang, gid, txt);
+        if (cozum.hata || !cozum.kategori) { await message.channel.send(t(lang, "otomasyon.kategoriIdYok")).catch(() => {}); return; }
+        state.kategori = cozum.kategori.id;
+        if (cozum.otomatik) {
+          await message.channel.send(t(lang, "ticket.kategoriOtomatik", { kategori: `${cozum.kategori}` })).catch(() => {});
+        }
         if (!state.modlog) {
           state.asama = "modlog";
           await message.channel.send(t(lang, "otomasyon.modlogSor")).catch(() => {});
