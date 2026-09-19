@@ -55,7 +55,7 @@ function similarity(text1, text2) {
 class SoruEslestirici {
   constructor(db) {
     this.db = db;
-    this.esik = 0.50;
+    this.esik = 0.45;
     this.cache = new Map();
     this.cacheTime = 0;
     this.cacheTTL = 60000; // 1 dakika cache
