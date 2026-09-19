@@ -259,7 +259,7 @@ async function ogrenenCevapKaydet(interaction, soru, cevap) {
     const pid = pendingOlustur(soru, cevap, interaction.guild, interaction.user);
 
     await interaction.update({
-      content: t(lang, "ai.oneriAlindi"),
+      content: t(lang, "ai.oneriAlindi", { soru, cevap }),
       components: [],
       embeds: []
     }).catch(() => {});
@@ -549,7 +549,7 @@ async function cevapsizKanalaGonder(client, message, soru, lang) {
     const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
     const cid = `cevapsiz_${Date.now().toString(36)}_${Math.random().toString(36).substr(2, 6)}`;
     learnCache.set(cid, { soru, soran: message.author.id, kanal: message.channel.id });
-    setTimeout(() => learnCache.delete(cid), 60 * 1000);
+    setTimeout(() => learnCache.delete(cid), 5 * 60 * 1000);
     const e = new EmbedBuilder().setColor("Orange")
       .setTitle(t(lang, "ai.cevapsizBaslik"))
       .setDescription(t(lang, "ai.cevapsizAciklama", { kullanici: `${message.author}`, soru: soru.slice(0, 1500) }))

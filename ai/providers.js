@@ -6,6 +6,22 @@
 const fetch = require("node-fetch");
 
 const NVIDIA_MODELS = [
+  "nvidia/nemotron-3-super-120b-a12b",
+  "nvidia/llama-3.3-nemotron-super-49b-v1.5",
+  "nvidia/nvidia-nemotron-nano-9b-v2",
+  "deepseek-ai/deepseek-v4-pro",
+  "moonshotai/kimi-k2.6",
+  "meta/llama-4-maverick-17b-128e-instruct",
+  "minimaxai/minimax-m2.7",
+  "meta/llama-3.3-70b-instruct",
+  "meta/llama-3.1-405b-instruct",
+  "moonshotai/kimi-k2-instruct",
+  "qwen/qwen3-coder-480b-a35b-instruct",
+  "qwen/qwen3.5-397b-a17b",
+  "mistralai/mistral-large-3-675b-instruct-2512",
+  "mistralai/magistral-small-2506",
+  "bytedance/seed-oss-36b-instruct",
+  "openai/gpt-oss-120b",
   "openai/gpt-oss-20b"
 ];
 
@@ -13,7 +29,10 @@ const OPENROUTER_MODELS = [
   "deepseek/deepseek-r1:free",
   "deepseek/deepseek-chat-v3-0324:free",
   "meta-llama/llama-3.3-70b-instruct:free",
-  "qwen/qwen-2.5-72b-instruct:free"
+  "qwen/qwen-2.5-72b-instruct:free",
+  "meta-llama/llama-3.1-405b-instruct:free",
+  "mistralai/mistral-7b-instruct:free",
+  "google/gemma-2-9b-it:free"
 ];
 
 const PROVIDERS = [

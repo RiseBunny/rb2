@@ -215,7 +215,7 @@ module.exports = {
     bekle: "⏳ Please wait **{saniye} seconds**.",
     mesgul: "⏳ AI is busy, try again in **{saniye} seconds**.",
     ogretButon: "🧠 Teach RiseBunny",
-    oneriAlindi: "✅ **Suggestion received!** I'll learn it once server admins approve. 🧠\n\n**Question:** {soru}",
+    oneriAlindi: "✅ **Suggestion received!** I'll learn it once server admins approve. 🧠\n\n**Question:** {soru}\n**Answer:** {cevap}",
     ticketButon: "🎫 Open Ticket",
     ogrenildi: "✅ **Successfully learned!** This Q&A is now in my database.\n\n**Question:** {soru}\n**Answer:** {cevap}",
     sureDoldu: "❌ This teach request has expired. Please try again.",
