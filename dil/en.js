@@ -207,7 +207,8 @@ module.exports = {
     cevapsizBaslik: "❓ Unanswered Question",
     cevapsizAciklama: "{kullanici} asked, no answer found:\n**{soru}**",
     sebepSor: "🎫 Ticket reason (type within 30 seconds):",
-    sebepZamanAsimi: "⏰ Time's up, ticket not opened."
+    sebepZamanAsimi: "⏰ Time's up, ticket not opened.",
+    biletZatenAcik: "🎫 You already have an open ticket: {kanal}\nClose it first."
   },
   ticketPanel: {
     baslik: "Create Support Request",

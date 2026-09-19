@@ -8,10 +8,10 @@ const fetch = require("node-fetch");
 const PROVIDERS = [
   { name: "groq", key: "GROQ_API_KEY", url: "https://api.groq.com/openai/v1/chat/completions", model: "openai/gpt-oss-20b", type: "openai" },
   { name: "sambanova", key: "SAMBANOVA_API_KEY", url: "https://api.sambanova.ai/v1/chat/completions", model: "Meta-Llama-3.3-70B-Instruct", type: "openai" },
-  { name: "nvidia", key: "NVIDIA_API_KEY", url: "https://integrate.api.nvidia.com/v1/chat/completions", model: "meta/llama-4-maverick-17b-128e-instruct", type: "openai" },
-  { name: "gemini", key: "GEMINI_API_KEY", url: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent", type: "gemini" },
-  { name: "cerebras", key: "CEREBRAS_API_KEY", url: "https://api.cerebras.ai/v1/chat/completions", model: "qwen-3-32b", type: "openai" },
-  { name: "openrouter", key: "OPENROUTER_API_KEY", url: "https://openrouter.ai/api/v1/chat/completions", model: "deepseek/deepseek-r1:free", type: "openai" },
+  { name: "nvidia", key: "NVIDIA_API_KEY", url: "https://integrate.api.nvidia.com/v1/chat/completions", model: "meta/llama-3.3-70b-instruct", type: "openai" },
+  { name: "gemini", key: "GEMINI_API_KEY", url: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent", type: "gemini", fallbackUrl: "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent" },
+  { name: "cerebras", key: "CEREBRAS_API_KEY", url: "https://api.cerebras.ai/v1/chat/completions", model: "llama-3.3-70b", type: "openai" },
+  { name: "openrouter", key: "OPENROUTER_API_KEY", url: "https://openrouter.ai/api/v1/chat/completions", model: "meta-llama/llama-3.3-70b-instruct:free", type: "openai" },
 ];
 
 // Round-robin başlangıç indeksi (global, sona gelince başa döner)
@@ -35,9 +35,8 @@ async function callOpenAI(p, systemPrompt, soru, apiKey) {
   return { ok: true, cevap };
 }
 
-async function callGemini(p, systemPrompt, soru, apiKey) {
-  const url = `${p.url}?key=${apiKey}`;
-  const res = await fetch(url, {
+async function callGeminiOnce(url, systemPrompt, soru, apiKey) {
+  const res = await fetch(`${url}?key=${apiKey}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -52,6 +51,13 @@ async function callGemini(p, systemPrompt, soru, apiKey) {
   const cevap = data.candidates?.[0]?.content?.parts?.map(x => x.text || "").join("").trim();
   if (!cevap) return { ok: false, status: 500, error: "empty" };
   return { ok: true, cevap };
+}
+
+async function callGemini(p, systemPrompt, soru, apiKey) {
+  const r = await callGeminiOnce(p.url, systemPrompt, soru, apiKey);
+  if (r.ok || r.status !== 404 || !p.fallbackUrl) return r;
+  console.warn(`[AI:gemini] birincil model 404, yedek deneniyor`);
+  return callGeminiOnce(p.fallbackUrl, systemPrompt, soru, apiKey);
 }
 
 /**

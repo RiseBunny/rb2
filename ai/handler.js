@@ -354,22 +354,31 @@ async function aiIsle(message, client) {
     const cevap = groqSonuc.cevap;
     const { t } = require("../dil");
 
-    // Öğret + Ticket butonları (short ID, çevirili)
+    // Öğret butonu her zaman; Ticket butonu SADECE otomasyon kurulu sunucuda
     const learnId = `learn_${Date.now().toString(36)}_${Math.random().toString(36).substr(2, 6)}`;
     learnCache.set(learnId, { soru, cevap });
     setTimeout(() => learnCache.delete(learnId), LEARN_CACHE_TTL);
 
+    let otomasyonVar = false;
+    if (message.guild) {
+      try {
+        const cfg = db.fetch(`otomasyon_${message.guild.id}`);
+        otomasyonVar = !!(cfg?.aktif && !cfg.duraklatildi);
+      } catch {}
+    }
+    const ogretBtn = new ButtonBuilder()
+      .setCustomId(`ai_learn_${learnId}`)
+      .setLabel(t(lang, "ai.ogretButon"))
+      .setStyle(ButtonStyle.Success)
+      .setEmoji("🧠");
     const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`ai_learn_${learnId}`)
-        .setLabel(t(lang, "ai.ogretButon"))
-        .setStyle(ButtonStyle.Success)
-        .setEmoji("🧠"),
-      new ButtonBuilder()
-        .setCustomId(`ai_ticket_${learnId}`)
-        .setLabel(t(lang, "ai.ticketButon"))
-        .setStyle(ButtonStyle.Primary)
-        .setEmoji("🎫")
+      otomasyonVar
+        ? [ogretBtn, new ButtonBuilder()
+            .setCustomId(`ai_ticket_${learnId}`)
+            .setLabel(t(lang, "ai.ticketButon"))
+            .setStyle(ButtonStyle.Primary)
+            .setEmoji("🎫")]
+        : [ogretBtn]
     );
 
     await message.reply({
@@ -476,6 +485,21 @@ async function learnButonIsle(interaction, client) {
 }
 
 /**
+ * Kullanıcının açık bileti var mı? Varsa kanal objesini döndürür.
+ */
+function acikBiletBul(guild, userId) {
+  try {
+    const mevcutId = db.fetch(`ass.${guild.id}.${userId}`);
+    if (mevcutId) {
+      const kanal = guild.channels.cache.get(mevcutId);
+      if (kanal) return kanal;
+      try { db.delete(`ass.${guild.id}.${userId}`); } catch {}
+    }
+  } catch {}
+  return null;
+}
+
+/**
  * "Ticket Aç" butonu — sebep sorar (modal), sonra ayarlanan kategoriye ticket açar
  */
 async function ticketButonIsle(interaction, client) {
@@ -483,6 +507,15 @@ async function ticketButonIsle(interaction, client) {
   if (!customId.startsWith("ai_ticket_")) return false;
   const { t } = require("../dil");
   try {
+    // Açık bilet kontrolü: kapanmadan yeni açamaz
+    if (interaction.guild) {
+      const acik = acikBiletBul(interaction.guild, interaction.user.id);
+      if (acik) {
+        const lang = getLangSync(interaction.user.id);
+        await interaction.reply({ content: t(lang, "ai.biletZatenAcik", { kanal: `${acik}` }), ephemeral: true }).catch(() => {});
+        return true;
+      }
+    }
     const learnId = customId.replace("ai_ticket_", "");
     const data = learnCache.get(learnId);
     if (!data) {
@@ -531,6 +564,12 @@ async function ticketSebepModalIsle(interaction, client) {
     const guild = interaction.guild;
     if (!guild) {
       await interaction.reply({ content: t(lang, "ortak.hata"), ephemeral: true }).catch(() => {});
+      return true;
+    }
+    // Modal gönderildikten sonra bilet açılmış olabilir — tekrar kontrol et
+    const acik = acikBiletBul(guild, interaction.user.id);
+    if (acik) {
+      await interaction.reply({ content: t(lang, "ai.biletZatenAcik", { kanal: `${acik}` }), ephemeral: true }).catch(() => {});
       return true;
     }
     await interaction.deferReply({ ephemeral: true }).catch(() => {});
