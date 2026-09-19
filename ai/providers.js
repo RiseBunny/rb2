@@ -7,7 +7,6 @@ const fetch = require("node-fetch");
 
 // Sadece test edilmiş ve çalışan modeller
 const NVIDIA_MODELS = [
-  "nvidia/nemotron-3-super-120b-a12b",  // ✅ Çalışıyor
   "openai/gpt-oss-20b"                   // ✅ Çalışıyor
 ];
 
