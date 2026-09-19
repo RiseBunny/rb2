@@ -45,6 +45,26 @@ exports.run = async (client, message, args) => {
     return;
   }
 
+  if (sub === "örnek" || sub === "ornek" || sub === "example" || sub === "test") {
+    const { acBilet, ticketKategorisiniGarantiEt } = require("./ticket");
+    const mevcutId = db.fetch(`ass.${message.guild.id}.${message.author.id}`);
+    if (mevcutId && message.guild.channels.cache.get(mevcutId))
+      return message.reply((lang === "en" ? "You already have an open ticket." : "Zaten açık bir biletin var."));
+    // Önce ticketayarla ile kurulmuş kategori varsa onu kullan, yoksa otomatik kur
+    const oncekiId = db.fetch(`ticket_kategori.${message.guild.id}`);
+    const kategori = await ticketKategorisiniGarantiEt(message.guild);
+    if (!kategori) return message.reply(t(lang, "ortak.hata"));
+    const otomatikKuruldu = oncekiId !== kategori.id;
+    if (otomatikKuruldu) {
+      await message.channel.send(t(lang, "ticket.kategoriOtomatik", { kategori: `${kategori}` })).catch(() => {});
+    }
+    const sebep = t(lang, "ticket.ornekSebep");
+    const kanal = await acBilet(client, message.guild, message.author, sebep, lang, message.channel, kategori.id);
+    if (!kanal) return message.reply(t(lang, "ortak.hata")).catch(() => {});
+    await ownerLog(client, new EmbedBuilder().setColor("Blue").setDescription((lang === "en" ? `🎫 Example ticket opened: **${message.guild.name}** → ${kategori} (${message.author.tag})` : `🎫 Örnek bilet açıldı: **${message.guild.name}** → ${kategori} (${message.author.tag})`)));
+    return message.reply(t(lang, "ticket.ornekAcildi", { kanal: `${kanal}`, kategori: `${kategori}` })).catch(() => {});
+  }
+
   // Varsayılan: kanal ayarla (eski davranış)
   const channel = message.mentions.channels.first();
   if (!channel || !channel.isTextBased()) return message.reply(t(lang, "ticket.kanalYok", { prefix: "r!" }));

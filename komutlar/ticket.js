@@ -201,6 +201,7 @@ async function acBilet(client, guild, user, sebep, lang, bilgiKanal, kategoriId 
 }
 
 exports.acBilet = acBilet;
+exports.ticketKategorisiniGarantiEt = ticketKategorisiniGarantiEt;
 exports.TICKET_KATEGORILER = TICKET_KATEGORILER;
 
 exports.conf = { enabled: true, guildOnly: true, aliases: ["bilet", "destek"], permLevel: 0, kategori: "ticket" };
