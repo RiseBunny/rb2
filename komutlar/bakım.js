@@ -64,5 +64,5 @@ exports.run = async (client, message, args) => {
   });
 };
 
-exports.conf = { enabled: true, guildOnly: false, aliases: [], permLevel: 4, kategori: "sahip" };
+exports.conf = { enabled: true, guildOnly: false, aliases: [], permLevel: 5, kategori: "sahip" };
 exports.help = { name: 'bakım', description: 'Bakım paneli: bot + site (sahip).', usage: 'bakım [sebep]' };

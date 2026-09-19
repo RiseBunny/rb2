@@ -1,7 +1,7 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const db = require('croxydb');
 const { getLangSync } = require("../dil");
-const { SAHIP_ID } = require("../utils");
+const { SAHIP_ID, ownerLog } = require("../utils");
 
 function kodUret() {
   const alfabe = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -15,6 +15,35 @@ exports.run = async (client, message, args) => {
   if (message.author.id !== SAHIP_ID) return message.reply(EN ? "Owner only." : "Sadece sahip.");
 
   const alt = (args[0] || "").toLowerCase();
+
+  // r!kodoluştur liste -> tüm kuponları listele
+  if (alt === "liste" || alt === "list") {
+    let liste = [];
+    try { liste = db.get("kuponListesi") || []; } catch {}
+    if (!liste.length) return message.reply(EN ? "There are no coupons yet." : "Henüz hiç kupon oluşturulmamış.");
+    const satirlar = liste.map((k) => {
+      const durum = k.bitis && Date.now() > k.bitis ? (EN ? "⌛ Expired" : "⌛ Süresi dolmuş")
+        : k.bitis ? `⏳ ${Math.max(0, Math.ceil((k.bitis - Date.now()) / 3600000))}h` : "♾️";
+      const odul = k.tip === "premium" ? `💎 ${k.premiumGun || 30} ${EN ? "days" : "gün"}`
+        : k.tip === "pet" ? `${k.petEmoji || "🐾"} ${k.petAd || "?"}` : `💸 ${Number(k.miktar || 0).toLocaleString()}`;
+      return `\`${k.kod}\` — ${odul} | ${k.yer || "ikisi"} | ${(k.calismalar || 0)}/${k.limit || "∞"} | ${durum}`;
+    });
+    const e = new EmbedBuilder().setColor("Gold").setTitle(EN ? "Coupon List" : "Kupon Listesi")
+      .setDescription(satirlar.join("\n").slice(0, 3900) || "-");
+    return message.channel.send({ embeds: [e] });
+  }
+
+  // r!kodoluştur sil <kod> -> kuponu sil
+  if (alt === "sil" || alt === "delete") {
+    const kod = (args[1] || "").toUpperCase();
+    if (!kod) return message.reply(EN ? "Usage: `kodoluştur sil <code>`" : "Kullanım: `kodoluştur sil <kod>`");
+    const mevcut = db.fetch(`kupon_${kod}`);
+    if (mevcut === undefined || mevcut === null) return message.reply(EN ? "Coupon not found." : "Kupon bulunamadı.");
+    try { db.delete(`kupon_${kod}`); } catch {}
+    try { db.set("kuponListesi", (db.get("kuponListesi") || []).filter(k => k.kod !== kod)); } catch {}
+    ownerLog(client, `🗑️ **Kupon silindi:** \`${kod}\` (${message.author.tag})`).catch(() => {});
+    return message.reply(EN ? `Coupon \`${kod}\` deleted.` : `\`${kod}\` kuponu silindi.`);
+  }
 
   // r!kodoluştur v2 → kalıcı RISE-V2 kuponu (site-şartlı, hesap başına tek, 250K)
   if (alt === "v2") {
@@ -53,4 +82,4 @@ exports.run = async (client, message, args) => {
 };
 
 exports.conf = { enabled: true, aliases: ['kuponolustur', 'kuponoluştur', 'create-coupon'], permLevel: 4, kategori: "sahip" };
-exports.help = { name: 'kodoluştur', description: 'Kupon köprüsü: `v2` kalıcı kuponu oluşturur, panelsiz ise r!kupon a yönlendirir.', usage: 'kodoluştur [v2]' };
+exports.help = { name: 'kodoluştur', description: 'Kupon köprüsü: `v2` kalıcı kuponu oluşturur, `liste`/`sil` yönetir, panelsiz ise r!kupon a yönlendirir.', usage: 'kodoluştur [v2|liste|sil <kod>]' };

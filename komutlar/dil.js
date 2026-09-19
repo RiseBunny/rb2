@@ -40,6 +40,16 @@ exports.run = async (client, message, args) => {
   const rowSunucu = new ActionRowBuilder().addComponents(
     new StringSelectMenuBuilder().setCustomId("sdil_sec").setPlaceholder("Sunucu Dili / Server Language").addOptions(dilSecenekleri())
   );
+  const { ButtonBuilder: BB2, ButtonStyle: BS2 } = require("discord.js");
+  const rowDocs = new ActionRowBuilder().addComponents(
+    new BB2().setLabel("📄 Docs").setStyle(BS2.Link).setURL("https://risebunny.vercel.app/docs.html"),
+    new BB2().setLabel("🔒 Privacy").setStyle(BS2.Link).setURL("https://risebunny.vercel.app/privacy.html"),
+    new BB2().setLabel("📜 Terms").setStyle(BS2.Link).setURL("https://risebunny.vercel.app/terms.html")
+  );
+  const rowOnay = new ActionRowBuilder().addComponents(
+    new BB2().setCustomId("onay_evet").setLabel("✅ Kaydet ve Kabul Et / Accept").setStyle(BS2.Success),
+    new BB2().setCustomId("onay_hayir").setLabel("❌ Onaylamıyorum / Decline").setStyle(BS2.Danger)
+  );
   const embed = new EmbedBuilder()
     .setColor("#36393F")
     .setTitle("🌍 Dil / Language")
@@ -48,7 +58,7 @@ exports.run = async (client, message, args) => {
       `**🏠 ${t(sl, "ortak.sunucuDilBaslik")} / Server Language**\n` +
       `Mevcut / Current: **${slAd}**\nKullanım / Usage: \`r!dil sunucu tr\` (Sunucuyu Yönet yetkisi gerekir / Manage Server required)`
     );
-  await message.reply({ embeds: [embed], components: [rowKullanici, rowSunucu] });
+  await message.reply({ embeds: [embed], components: [rowKullanici, rowSunucu, rowDocs, rowOnay] });
 };
 
 /** Dil secmemis kullaniciya gonderilen panel (message.js ilk-komut akisi kullanir). */

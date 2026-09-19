@@ -272,5 +272,5 @@ exports.run = async (client, message) => {
   col.on("end", () => { panel.edit({ components: [] }).catch(() => {}); });
 };
 
-exports.conf = { enabled: true, guildOnly: false, aliases: ["kupon-yonet", "kuponpanel", "coupon-manage"], permLevel: 4, kategori: "sahip" };
+exports.conf = { enabled: true, guildOnly: false, aliases: ["kupon-yonet", "kuponpanel", "coupon-manage"], permLevel: 5, kategori: "sahip" };
 exports.help = { name: "kupon", description: 'Butonlu kupon yönetimi (sahip): para/pet/premium, süre, bot/site, limit — hepsi butonla.', usage: "kupon" };
