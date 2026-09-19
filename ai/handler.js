@@ -1,8 +1,9 @@
 /**
- * AI Sohbet Sistemi - Ana İşleyici (croxydb + Groq fallback)
+ * AI Sohbet Sistemi - Ana İşleyici (croxydb + Multi-Provider fallback)
  * - "rise <metin>" tetikleyicisi
- * - Önce croxydb'de arar, yoksa Groq AI'ye sorar
- * - Groq cevabında "Öğren" butonu ekler
+ * - Admin etiketleme kontrolü (otomasyon kurulu sunucularda)
+ * - Önce croxydb'de arar, yoksa AI zincirine sorar (Groq → NVIDIA → Gemini → Cerebras → OpenRouter)
+ * - AI cevabında "Öğren" butonu ekler
  * - Owner log entegrasyonu (hata, öğrenme, cevap veremezse)
  * - Cooldown sadece spam koruması için
  */
@@ -29,6 +30,10 @@ const ownerCache = new Map();
 const LEARN_CACHE_TTL = 10 * 60 * 1000; // 10 dakika
 const OWNER_CACHE_TTL = 30 * 60 * 1000; // 30 dakika
 
+// Admin etiketleme cooldown (aynı kanalda 30 saniyede 1)
+const adminEtiketCooldown = new Map();
+const ADMIN_ETIKET_COOLDOWN_MS = 30 * 1000;
+
 const AI_CONFIG = {
   TETIKLEYICI: "rise",
   KARAKTER_LIMITI: 4000,
@@ -37,14 +42,80 @@ const AI_CONFIG = {
   DESTEK_SUNUCU_LINK: "https://discord.gg/mEfz5SfpbR"
 };
 
+// ═══════════════════════════════════════════════════════════
+// ADMIN ETİKETLEME KONTROLÜ
+// ═══════════════════════════════════════════════════════════
 /**
- * Eğitim verilerini Groq system prompt için formatla
+ * Admin/ManageChannels yetkisi olan biri etiketlendiğinde otomatik uyarı verir.
+ * Sadece otomasyon sistemi kurulu ve aktif sunucularda çalışır.
+ * @returns {Promise<boolean>} true = işlendi, false = işlenmedi
+ */
+async function adminEtiketKontrol(message, client) {
+  try {
+    if (!message.guild) return false;
+    if (message.author.bot) return false;
+
+    // 1) Otomasyon sistemi kurulu ve aktif mi?
+    const cfg = db.fetch(`otomasyon_${message.guild.id}`);
+    if (!cfg?.aktif) return false;
+
+    // 2) Premium bitmiş mi?
+    try {
+      const { otomasyonDurum } = require("../komutlar/otomasyon");
+      const d = otomasyonDurum(message.guild.id);
+      if (d?.bitmis) return false;
+    } catch {}
+
+    // 3) Mesajda gerçek bir mention var mı?
+    if (!message.mentions.members || message.mentions.members.size === 0) return false;
+
+    // 4) Bot kendisi etiketlendiyse normal AI işlesin (çift cevap olmasın)
+    if (message.mentions.members.has(client.user.id)) return false;
+
+    // 5) Mention'lanan kişilerden biri admin/manage_channels yetkisine sahip mi?
+    const yetkiliVar = message.mentions.members.some(m =>
+      m.permissions.has("Administrator") ||
+      m.permissions.has("ManageChannels") ||
+      m.permissions.has("ManageGuild")
+    );
+    if (!yetkiliVar) return false;
+
+    // 6) Cooldown (aynı kanalda 30 saniyede 1 kez)
+    const key = `${message.guild.id}_${message.channel.id}`;
+    const son = adminEtiketCooldown.get(key) || 0;
+    if (Date.now() - son < ADMIN_ETIKET_COOLDOWN_MS) return false;
+    adminEtiketCooldown.set(key, Date.now());
+
+    // 7) Kullanıcının diline göre cevap
+    const lang = getLangSync(message.author.id);
+    const prefix = process.env.PREFIX || "r!";
+
+    const mesaj = lang === "tr"
+      ? `👋 ${message.author}, bir yetkiliyi etiketlediniz.\n\n💡 **Sorununuzu doğrudan bana sorabilirsiniz:**\n\`${prefix}rise <sorununuz>\` yazın — size hemen cevap vermeye çalışayım.\n\nEğer çözemezsem, sizi otomatik olarak **ticket** sistemine yönlendireceğim. 🐰`
+      : `👋 ${message.author}, you mentioned a staff member.\n\n💡 **You can ask me directly:**\nType \`${prefix}rise <your question>\` — I'll try to answer immediately.\n\nIf I can't solve it, I'll redirect you to the **ticket** system. 🐰`;
+
+    await message.reply({
+      content: mesaj,
+      allowedMentions: { repliedUser: false }
+    }).catch(() => {});
+
+    console.log(`👋 [Admin Etiket] ${message.author.tag} → ${message.guild.name} (${message.guild.id})`);
+    return true;
+  } catch (e) {
+    console.error("[Admin Etiket Hatası]:", e.message);
+    return false;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// EĞİTİM VERİLERİ HAZIRLAMA
+// ═══════════════════════════════════════════════════════════
+/**
+ * Eğitim verilerini AI system prompt için formatla
  * cevaplar.json'dan TÜM Q&A çiftlerini ve croxydb'deki öğrenilenleri birleştirir
  */
 function egitimVerileriniHazirla(guildId = null) {
   try {
-    const fs = require("fs");
-    const path = require("path");
     const all = db.all() || {};
     const sunucuVeriler = [];
     const genelVeriler = [];
@@ -123,9 +194,11 @@ function egitimVerileriniHazirla(guildId = null) {
   }
 }
 
+// ═══════════════════════════════════════════════════════════
+// PENDING (BEKLEYEN ÖNERİ) SİSTEMİ
+// ═══════════════════════════════════════════════════════════
 /**
  * Kalıcı öğretme önerisi oluşturur (ai_pending_) — onaylanmadan aktif olmaz.
- * Döndürür: pending id (pid)
  */
 function pendingOlustur(soru, cevap, guild, user) {
   const pid = `pend_${Date.now().toString(36)}_${Math.random().toString(36).substr(2, 6)}`;
@@ -161,7 +234,7 @@ async function sunucuOnayMesaji(client, guild, ogretenUser, soru, cevap, pid, la
         if (kc?.isTextBased()) hedef = kc;
       }
     } catch {}
-    if (!hedef) return; // no-answer kanalı yoksa sadece sahip log yeterli
+    if (!hedef) return;
     const e = new EmbedBuilder().setColor("Gold")
       .setTitle(t(lang, "otomasyon.onayBaslik"))
       .setDescription(t(lang, "otomasyon.onayAciklama", { kullanici: `<@${ogretenUser.id}>`, soru: soru.slice(0, 1000), cevap: cevap.slice(0, 1000) }))
@@ -176,8 +249,7 @@ async function sunucuOnayMesaji(client, guild, ogretenUser, soru, cevap, pid, la
 }
 
 /**
- * "RiseBunny'ye öğret" — doğrudan kaydetmez; onay havuzuna alır,
- * sahip log'a (Kabul/Ret) + sunucuya (Kaydet/Sil, yetkililere) gönderir.
+ * "RiseBunny'ye öğret" — doğrudan kaydetmez; onay havuzuna alır
  */
 async function ogrenenCevapKaydet(interaction, soru, cevap) {
   try {
@@ -193,7 +265,6 @@ async function ogrenenCevapKaydet(interaction, soru, cevap) {
 
     console.log(`🧠 [AI Öneri] ${interaction.user.tag}: "${soru}" onay havuzunda (${pid})`);
 
-    // Sahip log: Kabul / Ret
     await ownerLogAI(interaction.client, {
       type: "learn",
       soru, cevap,
@@ -203,7 +274,6 @@ async function ogrenenCevapKaydet(interaction, soru, cevap) {
       pid
     });
 
-    // Sunucu onayı: sadece o sunucunun yetkilileri
     await sunucuOnayMesaji(interaction.client, interaction.guild, interaction.user, soru, cevap, pid, lang);
   } catch (e) {
     console.error("[AI Öğrenme Hatası]:", e);
@@ -213,10 +283,9 @@ async function ogrenenCevapKaydet(interaction, soru, cevap) {
   }
 }
 
-/**
- * Sunucu onay butonları (oto_onay_ / oto_red_) — sadece o sunucunun adminleri
- * Kaydet → otoegitim (sunucuya özel), Sil → öneriyi düşür
- */
+// ═══════════════════════════════════════════════════════════
+// SUNUCU ONAY BUTONLARI (oto_onay_ / oto_red_)
+// ═══════════════════════════════════════════════════════════
 async function otoOnayButonIsle(interaction, client) {
   const customId = interaction.customId;
   if (!customId.startsWith("oto_onay_") && !customId.startsWith("oto_red_")) return false;
@@ -267,25 +336,24 @@ async function otoOnayButonIsle(interaction, client) {
   }
 }
 
+// ═══════════════════════════════════════════════════════════
+// ANA AI İŞLEYİCİ (rise komutu)
+// ═══════════════════════════════════════════════════════════
 /**
  * AI Ana işleyici
- * @param {Message} message - Discord mesajı
- * @param {Client} client - Discord client
  * @returns {Promise<boolean>} true = AI cevap verdi (diğer işlemler durur)
  */
 async function aiIsle(message, client) {
   const icerik = message.content?.trim();
   if (!icerik) return false;
 
-  // 1) "rise" ile başlıyor mu? (büyük/küçük harf duyarsız) - "rise" veya "rise " kabul et
   const lowerContent = icerik.toLowerCase();
   if (!lowerContent.startsWith("rise")) return false;
 
-  // 2) Kullanıcının sorusunu al - "rise" (4 karakter) veya "rise " (5 karakter)
   const tetikleyiciUzunluk = lowerContent.startsWith("rise ") ? 5 : 4;
   const soru = icerik.slice(tetikleyiciUzunluk).trim();
 
-  // 3) Soru boşsa - karşılama mesajı
+  // Soru boşsa - karşılama mesajı
   if (!soru) {
     const lang = getLangSync(message.author.id);
     const isTr = lang === "tr";
@@ -296,7 +364,7 @@ async function aiIsle(message, client) {
     return true;
   }
 
-  // 3) Karakter limiti kontrolü
+  // Karakter limiti
   if (soru.length > 4000) {
     const lang = getLangSync(message.author.id);
     await message.reply({
@@ -306,7 +374,7 @@ async function aiIsle(message, client) {
     return true;
   }
 
-  // 4) Cooldown kontrolü (sadece spam koruması - 3 sn)
+  // Cooldown
   const now = Date.now();
   const sonKullanim = aiCooldown.get(message.author.id) || 0;
   if (now - sonKullanim < COOLDOWN_MS) {
@@ -320,7 +388,7 @@ async function aiIsle(message, client) {
   }
   aiCooldown.set(message.author.id, now);
 
-  // 5) Günlük mesaj limiti kontrolü (75/gün, özel sunucuda +50 = 125/gün)
+  // Günlük limit (75/gün, özel sunucuda +50 = 125/gün)
   const GUNLUK_LIMIT = 75;
   const OZEL_SUNUCU_ID = "1192948403232067725";
   const OZEL_LIMIT = 50;
@@ -335,7 +403,6 @@ async function aiIsle(message, client) {
   const limit = ozelSunucu ? GUNLUK_LIMIT + OZEL_LIMIT : GUNLUK_LIMIT;
   if (gunlukVeri.count >= limit) {
     const lang = getLangSync(message.author.id);
-    const { t } = require("../dil");
     const kalan = lang === "tr" 
       ? `Günlük mesaj hakkınız doldu (${limit}/gün). Destek sunucumuza katılarak günde +50 hak daha kazanabilirsiniz: ${process.env.DESTEK_SUNUCU_LINK || "https://discord.gg/mEfz5SfpbR"}`
       : `Daily message limit reached (${limit}/day). Join our support server for +50 more messages/day: ${process.env.DESTEK_SUNUCU_LINK || "https://discord.gg/mEfz5SfpbR"}`;
@@ -345,22 +412,17 @@ async function aiIsle(message, client) {
   gunlukVeri.count++;
   db.set(gunlukKey, gunlukVeri);
 
-  // 6a) Global local bilgi tabanı ÖNCE (cevaplar.json + ai_qa_, %50+ benzerlik)
+  // 1) Global local bilgi tabanı (cevaplar.json + ai_qa_)
   const sonuc = await matcher.bul(soru);
 
   if (sonuc) {
-    // ✅ Local DB'de bulundu → cevap ver
     await yerelCevapGonder(message, client, matcher.degiskenleriDoldur ? matcher.degiskenleriDoldur(sonuc.cevap, message, client) : sonuc.cevap, "");
-
-    // Kullanım sayısını artır
     try { db.add(`ai_qa_${sonuc.id}_kullanim`, 1); } catch {}
-
     console.log(`🤖 [AI Local] ${message.author.tag}: "${soru}" → "${sonuc.soru}" (skor: ${sonuc.skor.toFixed(2)})`);
     return true;
   }
 
-  // 6b) Sunucuya özel otomasyon eğitimi (her sunucu özelleşmiş olur, %50+ benzerlik)
-  // Premium biterse: veriler DURUR, çalışma durur + sahip log + kanal bildirimi
+  // 2) Sunucuya özel otomasyon eğitimi
   if (message.guild) {
     try {
       const { otomasyonDurum } = require("../komutlar/otomasyon");
@@ -389,12 +451,9 @@ async function aiIsle(message, client) {
     } catch {}
   }
 
-  // 7) Hiçbirinde yoksa sağlayıcı zincirine sor (sunucuya özel system prompt ile)
-
-  // "Yazıyor..." etkisi
+  // 3) Sağlayıcı zincirine sor
   await message.channel.sendTyping().catch(() => {});
 
-  // Çoklu sağlayıcı zincirine sor (rate-limit yiyeni atla, sona gelince başa dön)
   const { chainAsk } = require("./providers");
   const { buildSystemPrompt } = require("./groq");
   const lang = getLangSync(message.author.id);
@@ -404,7 +463,6 @@ async function aiIsle(message, client) {
     const cevap = prefixTemizle(groqSonuc.cevap);
     const { t } = require("../dil");
 
-    // Öğret butonu her zaman; Ticket butonu SADECE otomasyon kurulu sunucuda
     const learnId = `learn_${Date.now().toString(36)}_${Math.random().toString(36).substr(2, 6)}`;
     learnCache.set(learnId, { soru, cevap });
     setTimeout(() => learnCache.delete(learnId), LEARN_CACHE_TTL);
@@ -437,11 +495,11 @@ async function aiIsle(message, client) {
       allowedMentions: { repliedUser: false }
     }).catch(() => {});
 
-    console.log(`🤖 [AI Groq] ${message.author.tag}: "${soru}" → Groq cevapladı (${groqSonuc.provider || "?"})`);
+    console.log(`🤖 [AI Chain] ${message.author.tag}: "${soru}" → ${groqSonuc.provider || "?"}`);
     return true;
   }
 
-  // 8) Cevap bulunamadı: cevapsız kanalına gönder + hata mesajı + owner log
+  // 4) Cevap bulunamadı
   const { t } = require("../dil");
   const hataMesaji = groqSonuc.error || (lang === "tr" ? "Anlamadım, bir hata oldu. Başka bir şekilde sorabilir misin?" : "I didn't understand, an error occurred. Can you rephrase?");
 
@@ -452,10 +510,8 @@ async function aiIsle(message, client) {
 
   console.log(`❌ [AI Hata] ${message.author.tag}: "${soru}" → ${groqSonuc.error}`);
 
-  // Cevapsız sorular kanalına gönder (otomasyon aktifse)
   await cevapsizKanalaGonder(client, message, soru, lang);
 
-  // Owner log: sadece GERÇEK hatalarda (rate-limit/yoğunluk mesajlarında atma)
   if (groqSonuc.statusCode !== 429) {
     await ownerLogAI(client, {
       type: "error",
@@ -470,15 +526,14 @@ async function aiIsle(message, client) {
   return true;
 }
 
-/**
- * Cevapsız soruyu sunucunun no-answer kanalına gönder + "Cevap Ekle" butonu (30sn yanıt penceresi)
- */
+// ═══════════════════════════════════════════════════════════
+// CEVAPSIZ KANAL BİLDİRİMİ
+// ═══════════════════════════════════════════════════════════
 async function cevapsizKanalaGonder(client, message, soru, lang) {
   try {
     if (!message.guild) return;
     const cfg = db.fetch(`otomasyon_${message.guild.id}`);
     if (!cfg?.aktif || !cfg.noAnswerKanal) return;
-    // Premium bitmişse duraklatılmış sayılır — kanal bildirimi yapma
     try {
       const { otomasyonDurum } = require("../komutlar/otomasyon");
       const d = otomasyonDurum(message.guild.id);
@@ -503,9 +558,9 @@ async function cevapsizKanalaGonder(client, message, soru, lang) {
   } catch {}
 }
 
-/**
- * "RiseBunny'ye öğret" butonu interaction handler (çevirili, local'e kaydeder)
- */
+// ═══════════════════════════════════════════════════════════
+// ÖĞREN BUTONU
+// ═══════════════════════════════════════════════════════════
 async function learnButonIsle(interaction, client) {
   const customId = interaction.customId;
   if (!customId.startsWith("ai_learn_")) return false;
@@ -522,7 +577,7 @@ async function learnButonIsle(interaction, client) {
     }
 
     const { soru, cevap } = data;
-    learnCache.delete(learnId); // Tek kullanımlık
+    learnCache.delete(learnId);
 
     await ogrenenCevapKaydet(interaction, soru, cevap);
     return true;
@@ -534,9 +589,9 @@ async function learnButonIsle(interaction, client) {
   }
 }
 
-/**
- * Kullanıcının açık bileti var mı? Varsa kanal objesini döndürür.
- */
+// ═══════════════════════════════════════════════════════════
+// TICKET SİSTEMİ (AI'dan)
+// ═══════════════════════════════════════════════════════════
 function acikBiletBul(guild, userId) {
   try {
     const mevcutId = db.fetch(`ass.${guild.id}.${userId}`);
@@ -549,15 +604,11 @@ function acikBiletBul(guild, userId) {
   return null;
 }
 
-/**
- * "Ticket Aç" butonu — sebep sorar (modal), sonra ayarlanan kategoriye ticket açar
- */
 async function ticketButonIsle(interaction, client) {
   const customId = interaction.customId;
   if (!customId.startsWith("ai_ticket_")) return false;
   const { t } = require("../dil");
   try {
-    // Açık bilet kontrolü: kapanmadan yeni açamaz
     if (interaction.guild) {
       const acik = acikBiletBul(interaction.guild, interaction.user.id);
       if (acik) {
@@ -594,9 +645,6 @@ async function ticketButonIsle(interaction, client) {
   }
 }
 
-/**
- * Ticket sebep modalı — ayarlanan kategoriye ticket açar
- */
 async function ticketSebepModalIsle(interaction, client) {
   if (!interaction.isModalSubmit() || !interaction.customId.startsWith("ai_ticketsebep_")) return false;
   const { t, getLang } = require("../dil");
@@ -616,14 +664,12 @@ async function ticketSebepModalIsle(interaction, client) {
       await interaction.reply({ content: t(lang, "ortak.hata"), ephemeral: true }).catch(() => {});
       return true;
     }
-    // Modal gönderildikten sonra bilet açılmış olabilir — tekrar kontrol et
     const acik = acikBiletBul(guild, interaction.user.id);
     if (acik) {
       await interaction.reply({ content: t(lang, "ai.biletZatenAcik", { kanal: `${acik}` }), ephemeral: true }).catch(() => {});
       return true;
     }
     await interaction.deferReply({ ephemeral: true }).catch(() => {});
-    // Otomasyon ticket kategorisi öncelikli, yoksa ticket.js varsayılanı
     let katId = null;
     try {
       const cfg = db.fetch(`otomasyon_${guild.id}`);
@@ -638,9 +684,9 @@ async function ticketSebepModalIsle(interaction, client) {
   }
 }
 
-/**
- * "Cevap Ekle" butonu — 30sn içinde cevap yazmasını ister, sonra sunucu eğitimine kaydeder
- */
+// ═══════════════════════════════════════════════════════════
+// CEVAP EKLE BUTONU (cevapsız kanaldan)
+// ═══════════════════════════════════════════════════════════
 async function cevapEkleButonIsle(interaction, client) {
   if (!interaction.isButton() || !interaction.customId.startsWith("ai_cevapekle_")) return false;
   const { t, getLang } = require("../dil");
@@ -683,9 +729,9 @@ async function cevapEkleButonIsle(interaction, client) {
   }
 }
 
-/**
- * Pending kaydı oku: önce kalıcı DB (ai_pending_), sonra bellek, sonra eski base64
- */
+// ═══════════════════════════════════════════════════════════
+// PENDING OKUMA
+// ═══════════════════════════════════════════════════════════
 function pendingOku(pid) {
   try {
     const rec = db.fetch(`ai_pending_${pid}`);
@@ -702,13 +748,13 @@ function pendingOku(pid) {
   return null;
 }
 
-/**
- * Owner butonları handler (Kabul Et / Reddet)
- */
+// ═══════════════════════════════════════════════════════════
+// OWNER BUTONLARI (Kabul / Reddet / Öğret)
+// ═══════════════════════════════════════════════════════════
 async function ownerButonIsle(interaction, client) {
   const customId = interaction.customId;
 
-  // Owner AI kaydet (Kabul Et) butonu (çevirili)
+  // Owner AI kaydet (Kabul Et)
   if (customId.startsWith("owner_ai_save_")) {
     const { t } = require("../dil");
     if (interaction.user.id !== OWNER_ID) {
@@ -724,7 +770,6 @@ async function ownerButonIsle(interaction, client) {
         await interaction.reply({ content: t(lang0, "ai.kayitSureDoldu"), ephemeral: true }).catch(() => {});
         return true;
       }
-      // Zaten işlenmiş mi?
       try {
         const rec = db.fetch(`ai_pending_${oid}`);
         if (rec && rec.durum && rec.durum !== "bekliyor") {
@@ -769,7 +814,7 @@ async function ownerButonIsle(interaction, client) {
     return true;
   }
 
-  // Owner AI sil (Reddet) butonu - mesajı sil ve reddedildi mesajı gönder
+  // Owner AI sil (Reddet)
   if (customId.startsWith("owner_ai_delete_")) {
     const { t } = require("../dil");
     if (interaction.user.id !== OWNER_ID) {
@@ -788,7 +833,6 @@ async function ownerButonIsle(interaction, client) {
       const { soru } = data;
       try { db.set(`ai_pending_${oid}`, { ...(db.fetch(`ai_pending_${oid}`) || {}), durum: "sahip_red" }); } catch {}
 
-      // Soruya benzer kayıtları bul ve sil
       const all = db.all() || {};
       let silinen = 0;
       for (const [key, value] of Object.entries(all)) {
@@ -800,13 +844,11 @@ async function ownerButonIsle(interaction, client) {
 
       try { matcher.cacheTemizle(); } catch {}
 
-      // Orijinal mesajı sil ve reddedildi mesajı gönder
       try {
         await interaction.deleteReply().catch(() => {});
       } catch {}
       
       const lang = getLangSync(interaction.user.id);
-      const { t } = require("../dil");
       await interaction.channel.send({ 
         content: t(lang, "ai.reddedildi", { soru }), 
         allowedMentions: { repliedUser: false } 
@@ -823,7 +865,7 @@ async function ownerButonIsle(interaction, client) {
     return true;
   }
 
-  // Owner AI öğret butonu (cevap veremediğinde, çevirili)
+  // Owner AI öğret
   if (customId.startsWith("owner_ai_teach_")) {
     const { t } = require("../dil");
     if (interaction.user.id !== OWNER_ID) {
@@ -831,7 +873,6 @@ async function ownerButonIsle(interaction, client) {
       return interaction.reply({ content: t(lang, "ai.sadeceSahip"), ephemeral: true }).catch(() => {});
     }
 
-    // Modal açarak sahibin cevap yazmasını sağla
     const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require("discord.js");
     const oid = customId.replace("owner_ai_teach_", "");
     const tdata = pendingOku(oid);
@@ -867,9 +908,9 @@ async function ownerButonIsle(interaction, client) {
   return false;
 }
 
-/**
- * Modal handler for owner teach
- */
+// ═══════════════════════════════════════════════════════════
+// OWNER MODAL (Öğret modali)
+// ═══════════════════════════════════════════════════════════
 async function ownerModalIsle(interaction, client) {
   const customId = interaction.customId;
   
@@ -916,7 +957,6 @@ async function ownerModalIsle(interaction, client) {
         ephemeral: true
       }).catch(() => {});
 
-      // Owner log
       await ownerLogAI(client, {
         type: "learn",
         soru: soru,
@@ -941,8 +981,11 @@ async function ownerModalIsle(interaction, client) {
   return false;
 }
 
+// ═══════════════════════════════════════════════════════════
+// YARDIMCI FONKSİYONLAR
+// ═══════════════════════════════════════════════════════════
 /**
- * Ham {{prefix}} / {prefix} kalıntılarını gerçek prefixe çevirir (r!otomasyon gibi görünsün)
+ * {{prefix}} / {prefix} kalıntılarını gerçek prefixe çevirir
  */
 function prefixTemizle(cevap) {
   const prefix = process.env.PREFIX || "r!";
@@ -974,7 +1017,6 @@ async function yerelCevapGonder(message, client, hamCevap, onek = "") {
 
 /**
  * Owner log'a AI hata/öğrenme/cevap veremezse log gönder
- * Öğrenme kayıtları kalıcı pending olarak DB'ye yazılır (restart'a dayanıklı)
  */
 async function ownerLogAI(client, logData) {
   try {
@@ -1028,8 +1070,12 @@ function cacheTemizle() {
   matcher.cacheTemizle();
 }
 
+// ═══════════════════════════════════════════════════════════
+// EXPORTS
+// ═══════════════════════════════════════════════════════════
 module.exports = {
   aiIsle,
+  adminEtiketKontrol,     // ⬅️ YENİ
   learnButonIsle,
   ticketButonIsle,
   ticketSebepModalIsle,

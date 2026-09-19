@@ -7,13 +7,11 @@ if (!croxydb.get) croxydb.get = croxydb.fetch;
 if (!croxydb.subtract && croxydb.sub) croxydb.subtract = croxydb.sub;
 const db = croxydb;
 
-// Eski require('quick.db') çağrıları croxydb'ye yönlendir (geçiş güvenliği)
 try {
   const p = require.resolve("quick.db");
   require.cache[p] = { id: p, filename: p, loaded: true, exports: croxydb };
 } catch {}
 
-// Eski require('canvas') çağrıları @napi-rs/canvas'a yönlendir
 try {
   const napi = require("@napi-rs/canvas");
   const cp = require.resolve("canvas");
@@ -24,7 +22,14 @@ const Discord = require("discord.js");
 const { t, getLangSync, getGuildLang } = require("./dil");
 const U = require("./utils");
 
-// ---------- v14 güvenlik shimleri (kaçan eski çağrılar crash vermesin) ----------
+let AI = null;
+try {
+  AI = require("./ai/handler");
+  console.log("[AI] Handler yüklendi ✓");
+} catch (e) {
+  console.warn("[AI] Handler yüklenemedi:", e.message);
+}
+
 if (!Discord.EmbedBuilder.prototype.addField) {
   Discord.EmbedBuilder.prototype.addFieldsSafe = Discord.EmbedBuilder.prototype.addFields;
   Discord.EmbedBuilder.prototype.addField = function (name, value, inline) {
@@ -55,7 +60,6 @@ if (!Discord.EmbedBuilder.prototype.addField) {
     }
     try { return origColor.call(this, color); } catch { return origColor.call(this, "Default"); }
   };
-  // channel.send(embed) -> channel.send({ embeds: [embed] }) uyumluluğu
   for (const Cls of [Discord.TextChannel, Discord.DMChannel, Discord.ThreadChannel].filter(Boolean)) {
     if (!Cls || !Cls.prototype.send || Cls.prototype.send.__rb) continue;
     const orig = Cls.prototype.send;
@@ -67,7 +71,6 @@ if (!Discord.EmbedBuilder.prototype.addField) {
     };
     Cls.prototype.send.__rb = true;
   }
-  // interaction ephemeral:true → flags (deprecation uyarısını bitirir, 26 çağrıyı kapsar)
   try {
     const EPH = Discord.MessageFlags && Discord.MessageFlags.Ephemeral;
     if (EPH !== undefined) {
@@ -89,7 +92,6 @@ if (!Discord.EmbedBuilder.prototype.addField) {
       }
     }
   } catch {}
-  // Eski izin stringleri ("BAN_MEMBERS") ile .has() çağrısı uyumluluğu
   const map = { CREATE_INSTANT_INVITE: "CreateInstantInvite", KICK_MEMBERS: "KickMembers", BAN_MEMBERS: "BanMembers", ADMINISTRATOR: "Administrator", MANAGE_CHANNELS: "ManageChannels", MANAGE_GUILD: "ManageGuild", MANAGE_MESSAGES: "ManageMessages", MANAGE_ROLES: "ManageRoles" };
   const origHas = Discord.PermissionsBitField.prototype.has;
   Discord.PermissionsBitField.prototype.has = function (perm, ...rest) {
@@ -99,7 +101,6 @@ if (!Discord.EmbedBuilder.prototype.addField) {
   };
 }
 
-// ---------- Client ----------
 const client = new Discord.Client({
   intents: [
     Discord.GatewayIntentBits.Guilds,
@@ -113,7 +114,6 @@ const client = new Discord.Client({
   ],
   partials: [Discord.Partials.Channel, Discord.Partials.Message, Discord.Partials.Reaction]
 });
-// discord-giveaways gibi paketlerin eski 'ready' dinleyicisini sessize al (v14.27 clientReady ile aynı)
 for (const _m of ["once", "on"]) {
   try {
     const _orig = client[_m].bind(client);
@@ -138,19 +138,12 @@ if (typeof U.startKuponSweeper === "function") U.startKuponSweeper(client);
 try { U.migrateKuponFlags(); } catch {}
 if (typeof U.startHatirlatSweeper === "function") U.startHatirlatSweeper(client);
 
-// ---------- Keepalive + Top.gg entegrasyonu (AutoStats + Vote Webhook) ----------
-// docs.top.gg v1: Api.postMetrics + HMAC imzalı webhook (x-topgg-signature).
-// v0 legacy (Authorization header) geriye uyumluluk için ayrıca desteklenir.
-// NOT: webhook ham body (raw-body) ister — bu yüzden global express.json()
-// YOKTUR; JSON parser yalnızca ihtiyaç duyan route'lara lokal uygulanır.
 const express = require("express");
 const crypto = require("crypto");
 const app = express();
 
-/* ── 1) Express keepalive ── */
 app.get("/", (req, res) => { console.log("RiseBunny pinglendi."); res.sendStatus(200); });
 
-/* ── 2) Leaderboard API (herkese açık, rich | level) ── */
 const cors = require("cors");
 app.use("/api/leaderboard", cors({
   origin: ["https://risebunny.vercel.app", "http://localhost:3000"],
@@ -167,7 +160,6 @@ async function _lbGetTop(kind) {
   const prefix = prefixMap[kind];
   if (!prefix) return [];
 
-  // Tüm verileri db.all() ile al
   let allData = {};
   try {
     allData = db.all() || {};
@@ -176,14 +168,12 @@ async function _lbGetTop(kind) {
     return [];
   }
 
-  // Prefix'e göre filtrele
   const mapped = Object.keys(allData)
     .filter(key => key.startsWith(prefix) && !key.includes("cd") && !key.includes("_cd"))
     .map(key => {
       const uid = key.replace(prefix, "");
       const rawVal = Number(allData[key]) || 0;
       if (kind === "level") {
-        // XP'ten level hesapla (utils'teki xpSeviye fonksiyonu)
         const level = U.xpSeviye(rawVal);
         return { id: uid, value: level, rawXP: rawVal };
       }
@@ -193,7 +183,6 @@ async function _lbGetTop(kind) {
     .sort((a, b) => b.value - a.value || (b.rawXP || 0) - (a.rawXP || 0))
     .slice(0, 50);
 
-  // Discord isim çözümü
   const withNames = await Promise.all(mapped.map(async r => {
     let name = client.users.cache.get(r.id)?.username;
     if (!name) {
@@ -218,9 +207,6 @@ app.get("/api/leaderboard/:kind", async (req, res) => {
 });
 console.log("[LB] :/api/leaderboard/:kind hazır (rich|level, 5 dk önbellek)");
 
-/* ── 2b) Site API: kullanıcı verisi + mağaza (paylaşımlı sır ile korumalı) ──
-   BOT_API_SECRET yoksa bu endpointler kapalıdır (404). Site (Vercel) bu sır ile
-   konuşur; sır asla frontend'e verilmez. */
 const BOT_API_SECRET = process.env.BOT_API_SECRET || "";
 function _botAuth(req, res, next) {
   if (!BOT_API_SECRET) return res.status(404).json({ error: "kapalı" });
@@ -242,17 +228,16 @@ app.get("/api/user/:id", _botAuth, async (req, res) => {
       try { username = (await client.users.fetch(id).catch(() => null))?.username || null; } catch {}
     }
     res.json({
-  id, username,
-  wallet, bank, total: wallet + bank,
-  xp, level: U.xpSeviye(xp),
-  premium: { active: U.isPremium(id), daysLeft: prem > Date.now() ? Math.ceil((prem - Date.now()) / 86400000) : 0 },
-  pets: Array.isArray(pets) ? pets.map(p => ({ name: p.name, emoji: p.emoji })) : [],
-  capes: db.fetch(`launcher_capes_${id}`) || []  // ✅ YENİ
-});
+      id, username,
+      wallet, bank, total: wallet + bank,
+      xp, level: U.xpSeviye(xp),
+      premium: { active: U.isPremium(id), daysLeft: prem > Date.now() ? Math.ceil((prem - Date.now()) / 86400000) : 0 },
+      pets: Array.isArray(pets) ? pets.map(p => ({ name: p.name, emoji: p.emoji })) : [],
+      capes: db.fetch(`launcher_capes_${id}`) || []
+    });
   } catch (e) { res.status(500).json({ error: "hata" }); }
 });
 
-// Mağaza kataloğu (varsayılanlar — sahip r!mağaza-yönet ile fiyat/görünürlük değiştirir)
 const SHOP_CATALOG = {
   premium_30:  { tip: "premium", gun: 30, fiyat: 250000, ad: "💎 Premium 30 Gün" },
   pet_tavsan:  { tip: "pet", pet: { name: "Tavşan", emoji: "🐰", rarity: "common" }, fiyat: 72000, ad: "🐰 Tavşan" },
@@ -262,7 +247,6 @@ const SHOP_CATALOG = {
   pet_aslan:   { tip: "pet", pet: { name: "Aslan", emoji: "🦁", rarity: "premium" }, fiyat: 315000, ad: "🦁 Aslan", premiumGerek: true },
   pet_kaplan:  { tip: "pet", pet: { name: "Kaplan", emoji: "🐅", rarity: "premium" }, fiyat: 342000, ad: "🐅 Kaplan", premiumGerek: true },
   paket_rastgele: { tip: "paket", fiyat: 150000, ad: "🎁 Rastgele Paket" },
-  // RiseBunny Launcher pelerinleri (ID'ler launcher preset ID'leriyle BİREBİR aynı olmalı)
   minecon2011:   { tip: "cape", fiyat: 100000, ad: "🏛️ Minecon 2011 Pelerini" },
   "bunny-neon":  { tip: "cape", fiyat: 200000, ad: "⚡ Bunny Neon Pelerini" },
   anniversary15: { tip: "cape", fiyat: 300000, ad: "💚 15. Yıl Creeper Pelerini" },
@@ -283,14 +267,12 @@ const SHOP_CATALOG = {
   "frost-cape":   { tip: "cape", fiyat: 450000, ad: "❄️ Frost Pelerini" },
   "shadow-cape":  { tip: "cape", fiyat: 600000, ad: "🌑 Shadow Pelerini" }
 };
-// Efektif ürün: varsayılan + sahip geçersiz kılmaları (magaza_<id> = {fiyat, gorunur})
 function _magaza(id) {
   const base = SHOP_CATALOG[id];
   if (!base) return null;
   const oz = db.fetch(`magaza_${id}`) || {};
   return { ...base, id, fiyat: oz.fiyat ?? base.fiyat, gorunur: oz.gorunur !== false };
 }
-// Pet satış fiyatı (r!pet sat NaN vermesin diye siteden verilen petlere işlenir)
 const PET_FIYAT = { "Tavşan": 80000, "Köpek": 100000, "Kedi": 150000, "Balık": 180000, "Aslan": 350000, "Kaplan": 380000 };
 function _petVer(id, pet) {
   const pets = db.fetch(`pets_${id}`) || [];
@@ -331,23 +313,17 @@ app.post("/api/shop/buy", _botAuth, express.json(), async (req, res) => {
   try {
     const id = String(req.body?.userId || "").replace(/\D/g, "").slice(0, 20);
     const item = _magaza(req.body?.item);
-    /* Satın alma kaynağı: launcher mi site mi? (site /api/launcher/buy 'source'
-       alanını iletir; eski çağrılarda 'site' varsayılır.) */
-    const kaynak = String(req.body?.source || "").toLowerCase() === "launcher"
-      ? "launcher"
-      : "site";
+    const kaynak = String(req.body?.source || "").toLowerCase() === "launcher" ? "launcher" : "site";
     if (!id || !item) return res.status(400).json({ error: "geçersiz istek" });
     if (!item.gorunur) return res.status(403).json({ error: "Bu ürün şu an satışta değil." });
-    // ✅ CAPE/BANDANA/WING SAHİPLİK KONTROLÜ (ödeme öncesi, ortak liste)
-if (item.tip === "cape" || item.tip === "bandana" || item.tip === "wing") {
-  const owned = db.fetch(`launcher_capes_${id}`) || [];
-  if (Array.isArray(owned) && owned.includes(req.body.item)) {
-    return res.status(409).json({ error: item.tip === "bandana" ? "Bu bandanaya zaten sahipsin." : item.tip === "wing" ? "Bu kanada zaten sahipsin." : "Bu pelerine zaten sahipsin." });
-  }
-}
+    if (item.tip === "cape" || item.tip === "bandana" || item.tip === "wing") {
+      const owned = db.fetch(`launcher_capes_${id}`) || [];
+      if (Array.isArray(owned) && owned.includes(req.body.item)) {
+        return res.status(409).json({ error: item.tip === "bandana" ? "Bu bandanaya zaten sahipsin." : item.tip === "wing" ? "Bu kanada zaten sahipsin." : "Bu pelerine zaten sahipsin." });
+      }
+    }
     if (item.premiumGerek && !U.isPremium(id)) return res.status(403).json({ error: "Bu pet için premium gerekli." });
     if (item.tip === "premium" && U.isPremium(id)) return res.status(403).json({ error: "Zaten premiumsun — süren bitince yenileyebilirsin." });
-    // Ödeme: önce cüzdan, kalan bankadan
     let wallet = Number(db.fetch(`para_${id}`) || 0);
     let bank = Number(db.fetch(`bankapara_${id}`) || 0);
     if (wallet + bank < item.fiyat) return res.status(402).json({ error: "Yetersiz bakiye.", wallet, bank });
@@ -356,7 +332,6 @@ if (item.tip === "cape" || item.tip === "bandana" || item.tip === "wing") {
     const rest = item.fiyat - fromWallet;
     if (rest > 0 && typeof db.subtract === "function") db.subtract(`bankapara_${id}`, rest);
 
-    // Teslimat
     let kazandi = null, dmBaslik = "", dmMetin = "";
     if (item.tip === "paket") {
       kazandi = _paketAc();
@@ -372,8 +347,7 @@ if (item.tip === "cape" || item.tip === "bandana" || item.tip === "wing") {
       U.addPremium(id, item.gun * 24 * 60 * 60 * 1000);
       dmBaslik = "🎉 Tebrikler! Premium Aktif";
       dmMetin = `**${item.ad}** aldınız, premiumunuz **${item.gun} gün** aktif! İyi eğlenceler! 💎`;
-   } else if (item.tip === "cape" || item.tip === "bandana" || item.tip === "wing") {
-      // ✅ CAPE/BANDANA/WING SAHİPLİK KAYDI (ortak liste)
+    } else if (item.tip === "cape" || item.tip === "bandana" || item.tip === "wing") {
       const owned = db.fetch(`launcher_capes_${id}`) || [];
       if (!owned.includes(req.body.item)) {
         owned.push(req.body.item);
@@ -412,13 +386,11 @@ if (item.tip === "cape" || item.tip === "bandana" || item.tip === "wing") {
     res.json({ ok: true, item: req.body.item, ad: item.ad, fiyat: item.fiyat, kazandi, wallet, bank, total: wallet + bank, source: kaynak });
   } catch (e) { res.status(500).json({ error: "hata" }); }
 });
-// Kupon kullanımı (site): Discord oturumu Vercel'den doğrulanmış kullanıcı ID'si ile gelir
 app.post("/api/coupon/redeem", _botAuth, express.json(), async (req, res) => {
   try {
     const id = String(req.body?.userId || "").replace(/\D/g, "").slice(0, 20);
     const kod = String(req.body?.kod || "").toUpperCase().trim();
     if (!id || !kod) return res.status(400).json({ error: "eksik alan" });
-    // Merkezi okuma: eski format + bozuk bitis otomatik onarılır
     let kupon = U.getKupon(kod);
     if (!kupon) return res.status(404).json({ error: "Geçersiz kupon kodu." });
     if (kupon.yer === "bot") return res.status(403).json({ error: "Bu kupon sadece botta kullanılabilir." });
@@ -426,7 +398,6 @@ app.post("/api/coupon/redeem", _botAuth, express.json(), async (req, res) => {
     if (kupon.limit && (kupon.calismalar || 0) >= kupon.limit) return res.status(410).json({ error: "Bu kupon kullanım limitine ulaşmış." });
     if (db.fetch(`kupon_kullandi_${kod}_${id}`)) return res.status(409).json({ error: "Bu kuponu zaten kullandın (hesap başına tek)." });
 
-    // Ödül
     let mesaj = "";
     if (kupon.tip === "premium") {
       const gun = Number(kupon.premiumGun) || 30;
@@ -453,7 +424,6 @@ app.post("/api/coupon/redeem", _botAuth, express.json(), async (req, res) => {
 
 console.log("[Mağaza] :/api/user/:id + /api/shop hazır" + (BOT_API_SECRET ? "" : " (BOT_API_SECRET yok → kapalı)"));
 
-// İletişim formu → sahip log kanalı (site 05 bölümü + Vercel forward)
 app.post("/api/contact", _botAuth, express.json(), async (req, res) => {
   try {
     const name = String(req.body?.name || "").slice(0, 60);
@@ -471,7 +441,6 @@ app.post("/api/contact", _botAuth, express.json(), async (req, res) => {
     res.json({ ok: true });
   } catch { res.status(500).json({ error: "hata" }); }
 });
-// Forum yanıt bildirimi → kullanıcı DM'i (site api/notify aynası)
 app.post("/api/notify", _botAuth, express.json(), async (req, res) => {
   try {
     const ids = Array.isArray(req.body?.userIds) ? req.body.userIds.map(String).slice(0, 20) : [];
@@ -489,7 +458,7 @@ app.post("/api/notify", _botAuth, express.json(), async (req, res) => {
           new Discord.ButtonBuilder().setLabel("Foruma Git").setStyle(Discord.ButtonStyle.Link).setURL(link)
         );
         await u.send({ embeds: [new Discord.EmbedBuilder().setColor("#5865F2").setTitle(title)
-          .setDescription(text).setTimestamp()] , components: [row] }).catch(() => {});
+          .setDescription(text).setTimestamp()], components: [row] }).catch(() => {});
         ok++;
       } catch {}
     }
@@ -497,7 +466,6 @@ app.post("/api/notify", _botAuth, express.json(), async (req, res) => {
   } catch { res.status(500).json({ error: "hata" }); }
 });
 
-// Site olay günlüğü → sahip log kanalı (forum log aynası)
 app.post("/api/log", _botAuth, express.json(), async (req, res) => {
   try {
     const baslik = String(req.body?.baslik || "🌐 Site Olayı").slice(0, 100);
@@ -511,10 +479,7 @@ app.post("/api/log", _botAuth, express.json(), async (req, res) => {
   } catch { res.status(500).json({ error: "hata" }); }
 });
 
-// ── Veri silme talebi: site → sahip log (onay/ret butonlu) ──
 const SILME_YETKI = [(process.env.SAHIP_ID || U.SAHIP_ID), "1310366324731547798"];
-/* Veri silme talebi spam koruması: kullanıcı başına 1 saatte 1 talep
-   (site / bot / ikisi fark etmez). */
 const SILME_COOLDOWN_MS = 60 * 60 * 1000;
 function silmeCooldownKalan(discordId) {
   try {
@@ -523,7 +488,6 @@ function silmeCooldownKalan(discordId) {
     return kalan > 0 ? kalan : 0;
   } catch { return 0; }
 }
-const SILME_PREFIX = ["para_", "bankapara_", "iban_", "xp_", "seviye_", "seviyeatlama_", "pets_", "premium_", "vote_", "dmail_", "language_", "afk_", "kupon_kullandi_", "onay_", "yedek_veri_"];
 function silmeOzet(id) {
   const satir = [];
   try {
@@ -546,15 +510,12 @@ app.post("/api/deletion/request", _botAuth, express.json(), async (req, res) => 
     const username = String(req.body?.username || "").slice(0, 60);
     const kapsam = ["bot", "site", "ikisi"].includes(req.body?.kapsam) ? req.body.kapsam : "ikisi";
     if (!docId || !discordId) return res.status(400).json({ error: "eksik alan" });
-    /* Spam koruması: 1 saatte 1 talep (kapsam fark etmez). */
     const bekle = silmeCooldownKalan(discordId);
     if (bekle > 0) {
       const dk = Math.ceil(bekle / 60000);
-      return res.status(429).json({ error: `Çok sık talep gönderiyorsun. ${dk} dakika sonra tekrar dene. / You send requests too often. Try again in ${dk} minute(s).`, kalanDakika: dk });
+      return res.status(429).json({ error: `Çok sık talep gönderiyorsun. ${dk} dakika sonra tekrar dene.`, kalanDakika: dk });
     }
     db.set(`silme_cooldown_${discordId}`, Date.now());
-    /* Site tarafı kullanıcının hangi platformlarda hangi verisi olduğunu bildirir;
-       sahip logunda bu liste gösterilir. */
     const hamVeri = req.body?.veri && typeof req.body.veri === "object" ? req.body.veri : {};
     const liste = (v) => (Array.isArray(v) ? v.map(x => String(x).slice(0, 140)).slice(0, 25) : []);
     const veri = { site: liste(hamVeri.site), bot: liste(hamVeri.bot) };
@@ -577,8 +538,6 @@ app.post("/api/deletion/request", _botAuth, express.json(), async (req, res) => 
         `**🌐 Site platformundaki veriler**\n${siteListe}\n\n` +
         "Kabul edersen bu veriler silinir ve kullanıcıya DM ile bildirilir."
       ).setTimestamp();
-    /* Sahip loguna direkt gönderilir; mesaj kimliği saklanır ki kabul/ret
-       sonrası embed "işlem yapıldı" olarak işaretlenip butonlar kapatılsın. */
     let logChannelId = "", logMessageId = "";
     try {
       const kanal = client.channels.cache.get(U.OWNER_LOG);
@@ -604,7 +563,6 @@ app.get("/api/deletion/status", _botAuth, async (req, res) => {
   } catch { res.json({ durum: "bekliyor" }); }
 });
 
-// ── Herkese açık durum endpointleri (sitenin canlı sayıları + bakım kapısı) ──
 app.get("/api/stats", (req, res) => {
   try {
     let users = 0;
@@ -616,9 +574,7 @@ app.get("/api/site-status", (req, res) => {
   const site = db.fetch("site_bakim") || null;
   res.json({ bakim: !!(site && site.acik), sebep: (site && site.sebep) || "", botBakim: !!db.fetch("8182bakımaç81") });
 });
-/* ── Giriş bildirimi: site (OAuth) ve launcher girişlerinde kullanıcıya DM +
-   sahip loga embed. Aynı kullanıcı 5 dakika içinde tekrar giriş yaparsa
-   (sayfa yenileme vb.) bildirim tekrarlanmaz. */
+
 const GIRIS_BILDIRIM_ARALIK = 5 * 60 * 1000;
 async function girisiBildir({ id, username, source, email }) {
   const uid = String(id || "").replace(/\D/g, "").slice(0, 20);
@@ -648,8 +604,6 @@ async function girisiBildir({ id, username, source, email }) {
   return true;
 }
 
-// Discord e-posta kaydı (Vercel OAuth callback yazar — sır korumalı).
-// Aynı zamanda site/launcher giriş bildirimini (DM + sahip log) üretir.
 app.post("/api/discord/link", _botAuth, express.json(), async (req, res) => {
   try {
     const id = String(req.body?.userId || "").replace(/\D/g, "").slice(0, 20);
@@ -661,7 +615,6 @@ app.post("/api/discord/link", _botAuth, express.json(), async (req, res) => {
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: "hata" }); }
 });
-// Doğrudan giriş bildirimi (launcher tarafından tetiklenir)
 app.post("/api/login", _botAuth, express.json(), async (req, res) => {
   try {
     const id = String(req.body?.userId || "").replace(/\D/g, "").slice(0, 20);
@@ -676,10 +629,6 @@ app.post("/api/login", _botAuth, express.json(), async (req, res) => {
   } catch { res.status(500).json({ error: "hata" }); }
 });
 
-/* ── 3) Vote Webhook (Top.gg → bot, v1 HMAC + v0 legacy dual) ──
-   v1:  header "x-topgg-signature: t=...,v1=..." → HMAC-SHA256("{t}.{rawBody}", secret)
-   v0:  header "Authorization: <secret>" → JSON { user, type, isWeekend }
-   Her ikisinde de secret = TOPGG_WEBHOOK_SECRET. Başarıda 204, hatada 401/403. */
 const TOPGG_BOT_ID = process.env.TOPGG_BOT_ID || "1540401487581020252";
 const TOPGG_SECRET = process.env.TOPGG_WEBHOOK_SECRET || "";
 const votePath = process.env.TOPGG_WEBHOOK_URL ? new URL(process.env.TOPGG_WEBHOOK_URL).pathname : "/api/topgg/vote";
@@ -708,7 +657,6 @@ app.post(votePath, async (req, res) => {
     const raw = await _readRaw(req);
     const sigHeader = req.headers["x-topgg-signature"];
 
-    // ── v1 (HMAC) ──
     if (sigHeader) {
       const sig = Array.isArray(sigHeader) ? sigHeader[0] : sigHeader;
       const parts = Object.fromEntries(String(sig).split(",").map((p) => p.split("=")));
@@ -722,12 +670,11 @@ app.post(votePath, async (req, res) => {
       if (body.type !== "vote.create") { console.log(`[TopGG] Bilinmeyen v1 tipi: ${body.type}`); return res.sendStatus(204); }
       const userId = body?.data?.user?.id || body?.data?.user?.platform_id;
       if (!userId) return res.status(422).json({ error: "missing user" });
-      const weekend = Number(body?.data?.weight || 1) > 1; // hafta sonu oylar ağırlıklı gelir
+      const weekend = Number(body?.data?.weight || 1) > 1;
       await _voteReward(String(userId), weekend ? 2 : 1);
       return res.sendStatus(204);
     }
 
-    // ── v0 legacy (Authorization) ──
     const auth = req.headers["authorization"] || "";
     if (!_timingSafeEqual(auth, TOPGG_SECRET)) return res.status(401).json({ error: "unauthorized" });
     let vote;
@@ -742,9 +689,7 @@ app.post(votePath, async (req, res) => {
   }
 });
 
-/* ── 4) Oy ödülü (simülasyon / gerçek) ── */
 async function _voteReward(userId, multiplier) {
-  // cooldown kontrolü
   const key = `vote_${userId}`;
   const last = Number(db.fetch(key) || 0);
   const now = Date.now();
@@ -756,14 +701,12 @@ async function _voteReward(userId, multiplier) {
   const money = (Number(process.env.TOPGG_REWARD_MONEY) || 1000) * multiplier;
   const xp   = (Number(process.env.TOPGG_REWARD_XP) || 150) * multiplier;
 
-  // param + xp
   if (typeof db.add === "function") {
     db.add(`para_${userId}`, money);
     db.add(`xp_${userId}`, xp);
   }
   db.set(key, now);
 
-  // rol (varsa)
   const roleId = process.env.TOPGG_REWARD_ROLE_ID;
   if (roleId && process.env.MAIN_GUILD_ID) {
     const guild = client.guilds.cache.get(process.env.MAIN_GUILD_ID);
@@ -773,7 +716,6 @@ async function _voteReward(userId, multiplier) {
     }
   }
 
-  // DM
   const user = await client.users.fetch(userId).catch(() => null);
   user?.send(
     `🥕 Oyun için teşekkürler! +${money.toLocaleString()} para ve +${xp} XP kazandın (12 saat sonra tekrar).`
@@ -782,14 +724,7 @@ async function _voteReward(userId, multiplier) {
   console.log(`[Vote] Ödül verildi: ${userId} ×${multiplier}`);
 }
 
-/* ── 5) AutoStats (her 30 dakikada bir, @top-gg/sdk v4 Api.postMetrics) ──
-   SDK v4'te AutoPoster KALDIRILDI; yerine manuel interval + postMetrics kullanılır.
-   Limit: 15 dk'dan sık gönderme → 429. 30 dk ideal. */
 let topggApi = null;
-/* ── 5b) Firestore liderlik senkronu (site tabloları bota bağımlı kalmasın) ──
-   Bot her 10 dk'da rich+level top50'yi Firestore `leaderboard/*` yazar.
-   Gerekli env: FIREBASE_BOT_EMAIL + FIREBASE_BOT_SIFRE (Firebase Console'da
-   E-posta/Şifre ile açılmış kullanıcı; rules e-postayı doğrular). */
 const FB_PROJECT = "gen-lang-client-0590499912";
 const FB_KEY = process.env.FIREBASE_API_KEY || "AIzaSyAq5Nafl9aI2TabzGsj5J9ij6lNwyfTguM";
 let _fbTok = null, _fbExp = 0;
@@ -871,7 +806,6 @@ client.once("clientReady", () => {
     setInterval(_lbSync, 10 * 60 * 1000);
   }
 });
-// Sunucu katılma/ayrılma sonrası da tazele (debounce 60 sn)
 let _statsDeb = null;
 function queueStats(reason) {
   clearTimeout(_statsDeb);
@@ -886,8 +820,6 @@ app.listen(PORT, () => {
   console.log(`  • postMetrics → 30 dk'da bir stats (${TOPGG_BOT_ID})`);
 });
 
-/* ── 6) Simülasyon (yalnızca TOPGG_SIMULATE_VOTES=1 iken, DB'ye yazmaz) ──
-   Gerçek oy akışı top.gg onayından sonra başlar; bu blok sadece log üretir. */
 if (process.env.TOPGG_SIMULATE_VOTES === "1") {
   console.log("[SIM] Oy simülasyonu açık — her 45 sn'de 1 sahte oy LOGU (ödül YOK).");
   setInterval(() => {
@@ -895,7 +827,6 @@ if (process.env.TOPGG_SIMULATE_VOTES === "1") {
   }, 45000);
 }
 
-// ---------- Komut yükleyici ----------
 const fs = require("fs");
 const prefix = U.PREFIX;
 client.commands = new Discord.Collection();
@@ -937,17 +868,11 @@ client.elevation = (message) => {
   try {
     if (message.member.permissions.has(Discord.PermissionFlagsBits.BanMembers)) lvl = 2;
     if (message.member.permissions.has(Discord.PermissionFlagsBits.Administrator)) lvl = 3;
-    /* Sahip tüm sahip komutlarını (permLevel 5) çalıştırabilmeli.
-       Eskiden 4 dönüyordu; message.js'teki `perms < permLevel` kontrolü
-       yüzünden r!presil dahil TÜM sahip komutları sessizce çalışmıyordu. */
     if (message.author.id === U.SAHIP_ID) lvl = 5;
   } catch {}
   return lvl;
 };
 
-// NOT: Yapay zekâ "sor" komutu kaldırıldı (istek üzerine).
-
-// ---------- Sunucu ekleme ödülü (guildDelete leak düzeltildi) ----------
 client.on("guildCreate", async (guild) => {
   try {
     const ownerId = guild.ownerId;
@@ -968,10 +893,27 @@ client.on("guildDelete", async (guild) => {
   } catch {}
 });
 
-// NOT: Asagidaki tum otomatik sistem cevaplari (hosgeldin, koruma,
-// modlog, otorol, kayit karsilama) SUNUCU dilindedir (r!dil sunucu).
-// Kisi bazli komut cevaplari kullanicinin kendi dilindedir.
-// ---------- SA-AS ----------
+if (AI) {
+  client.on("messageCreate", async (message) => {
+    try {
+      if (message.author.bot) return;
+      if (!message.guild) return;
+      if (typeof AI.adminEtiketKontrol === "function") {
+        const etiketIslendi = await AI.adminEtiketKontrol(message, client);
+        if (etiketIslendi) return;
+      }
+      if (typeof AI.aiIsle === "function") {
+        const aiIslendi = await AI.aiIsle(message, client);
+        if (aiIslendi) return;
+      }
+    } catch (e) {
+      console.error("[AI messageCreate] Hata:", e.message);
+    }
+  });
+} else {
+  console.warn("[AI] Handler yüklenemedi — AI devre dışı");
+}
+
 client.on("messageCreate", async (msg) => {
   try {
     if (!msg.guild || msg.author.bot) return;
@@ -980,26 +922,23 @@ client.on("messageCreate", async (msg) => {
   } catch {}
 });
 
-// ---------- Seviye (XP) sistemi ----------
 client.on("messageCreate", async (msg) => {
   try {
     if (!msg.guild || msg.author.bot || !msg.member) return;
     const uid = msg.author.id;
     const son = Number(db.fetch(`xp_cd_${uid}`) || 0);
-    if (Date.now() - son < 30000) return; // 30 saniyede 1 XP kazanim
+    if (Date.now() - son < 30000) return;
     db.set(`xp_cd_${uid}`, Date.now());
-    const kazanilan = Math.floor(Math.random() * 20) + 5; // 5-25 XP
+    const kazanilan = Math.floor(Math.random() * 20) + 5;
     db.add(`xp_${uid}`, kazanilan);
     const xp = Number(db.fetch(`xp_${uid}`) || 0);
     const seviye = U.xpSeviye(xp);
     const onceki = Number(db.fetch(`seviye_${uid}`) || 0);
-    // Seviye DEĞİŞTİĞİNDE kalıcı yazılır (leaderboard + kart + site hep aynı okur)
     if (seviye !== onceki) db.set(`seviye_${uid}`, seviye);
     if (seviye > onceki) {
       db.set(`seviyeatlama_${uid}`, Date.now());
       const odul = U.seviyeOdulu(seviye);
       const lang = getGuildLang(msg.guild.id);
-      // Rol odulu (seviye-ödül komutuyla tanimlanan)
       const rolKayitlari = db.get(`seviyeRoller_${msg.guild.id}`) || {};
       const rolId = rolKayitlari[seviye];
       if (rolId && msg.guild.roles.cache.get(rolId)) {
@@ -1017,7 +956,6 @@ client.on("messageCreate", async (msg) => {
   } catch {}
 });
 
-// ---------- Otomatik kayıt (v14 collector) ----------
 client.on("guildMemberAdd", async (member) => {
   try {
     const guild = member.guild, user = member.user;
@@ -1038,7 +976,8 @@ client.on("guildMemberAdd", async (member) => {
       await member.roles.add(onceki.sex === "K" ? kadin.id : erkek.id).catch(() => {});
       const tag = db.fetch(`kayıt-tag.${guild.id}`);
       await member.setNickname(`${tag ? `${tag} ` : ""}${onceki.name} | ${onceki.yaş}`).catch(() => {});
-      return kanal.send((lang === "en" ? `Registered **automatically**. Have fun **${onceki.name}**!` : `Kayıt başarıyla tamamlandı. **Otomatik** olarak kayıt edildin. İyi eğlenceler **${onceki.name}**`)).catch(() => {});
+      const lang0 = getGuildLang(guild.id);
+      return kanal.send((lang0 === "en" ? `Registered **automatically**. Have fun **${onceki.name}**!` : `Kayıt başarıyla tamamlandı. **Otomatik** olarak kayıt edildin. İyi eğlenceler **${onceki.name}**`)).catch(() => {});
     }
 
     const lang = getGuildLang(guild.id);
@@ -1080,7 +1019,6 @@ client.on("guildMemberAdd", async (member) => {
   } catch {}
 });
 
-// ---------- HG / BB canvas ----------
 async function hosgeldinKart(member, ayrildiMi) {
   try {
     const key = `gçkanal_${member.guild.id}`;
@@ -1121,7 +1059,6 @@ async function hosgeldinKart(member, ayrildiMi) {
 client.on("guildMemberRemove", (m) => hosgeldinKart(m, true));
 client.on("guildMemberAdd", (m) => hosgeldinKart(m, false));
 
-// ---------- Reklam engel ----------
 const REKLAM = [".com", ".net", ".xyz", ".tk", ".pw", ".io", ".me", ".gg", "www.", "https", "http", ".gl", ".org", ".com.tr", ".biz", ".rf", ".gd", ".az", ".party", ".gf"];
 async function reklamKontrol(msg, duzenlemeMi) {
   try {
@@ -1144,7 +1081,6 @@ async function reklamKontrol(msg, duzenlemeMi) {
 client.on("messageCreate", (m) => reklamKontrol(m, false));
 client.on("messageUpdate", (o, n) => { if (o?.content !== n?.content) reklamKontrol(n, true); });
 
-// ---------- Küfür engel ----------
 const KUFUR = ["siktir", "fuck", "puşt", "pust", "piç", "sikerim", "sik", "yarra", "yarrak", "amcık", "orospu", "orosbu", "oç", "ibne", "yavşak", "bitch", "dalyarak", "amk", "taşak", "daşşak"];
 async function kufurKontrol(msg) {
   try {
@@ -1167,7 +1103,6 @@ async function kufurKontrol(msg) {
 client.on("messageCreate", kufurKontrol);
 client.on("messageUpdate", (o, n) => { if (o?.content !== n?.content) kufurKontrol(n); });
 
-// ---------- Spam engel ----------
 client.on("messageCreate", async (message) => {
   try {
     if (!message.guild || message.author.bot) return;
@@ -1192,7 +1127,6 @@ client.on("messageCreate", async (message) => {
   } catch {}
 });
 
-// ---------- Koruma: ban / rol / kanal ----------
 client.on("guildBanAdd", async (guild, user) => {
   try {
     const kanalId = db.fetch(`bank_${guild.id}`);
@@ -1220,7 +1154,6 @@ client.on("roleDelete", async (role) => {
   } catch {}
 });
 
-// ---------- Modlog (tek kopya) ----------
 async function modlogGonder(hedef, embed) {
   try {
     if (!hedef) return;
@@ -1278,7 +1211,6 @@ client.on("guildBanRemove", async (guild, user) => {
   } catch {}
 });
 
-// ---------- Çekiliş ----------
 const { GiveawaysManager } = require("discord-giveaways");
 client.giveawaysManager = new GiveawaysManager(client, {
   storage: "./giveaways.json",
@@ -1286,7 +1218,6 @@ client.giveawaysManager = new GiveawaysManager(client, {
   default: { botsCanWin: false, exemptPermissions: ["ManageMessages", "Administrator"], embedColor: "#FF0000", reaction: "🎉" }
 });
 
-// Şartlı çekiliş: kazananlar şartı sağlamıyorsa yeniden çek
 client.giveawaysManager.on("giveawayEnded", async (giveaway, winners) => {
   try {
     const sart = db.fetch(`cekilis_sart_${giveaway.messageId}`);
@@ -1315,7 +1246,6 @@ client.giveawaysManager.on("giveawayEnded", async (giveaway, winners) => {
   } catch {}
 });
 
-// ---------- Otorol ----------
 client.on("guildMemberAdd", async (member) => {
   try {
     const rol = db.fetch(`otoRL_${member.guild.id}`);
@@ -1339,7 +1269,6 @@ client.on("guildMemberAdd", async (member) => {
   } catch {}
 });
 
-// ---------- Ayarlanabilir kayıt karşılama ----------
 client.on("guildMemberAdd", (member) => {
   try {
     const kanalId = db.fetch(`kayıthg_${member.guild.id}`);
@@ -1368,7 +1297,6 @@ client.on("guildMemberAdd", (member) => {
   } catch {}
 });
 
-// ---------- Raid koruma ----------
 client.on("guildMemberAdd", async (member) => {
   try {
     const ayar = db.fetch(`raidkoruma_${member.guild.id}`);
@@ -1379,7 +1307,6 @@ client.on("guildMemberAdd", async (member) => {
     liste.push(simdi);
     db.set(anahtar, liste);
     if (liste.length >= (ayar.esik || 5)) {
-      // Yeni hesap (7 günden genç) ise doğrulama rolü ver / at
       const yas = simdi - member.user.createdAt.getTime();
       if (yas < 7 * 86400000) {
         if (ayar.rol && member.guild.roles.cache.get(ayar.rol)) {
@@ -1395,7 +1322,6 @@ client.on("guildMemberAdd", async (member) => {
   } catch {}
 });
 
-// ---------- İsim değiştirme günlüğü ----------
 client.on("guildMemberUpdate", async (eski, yeni) => {
   try {
     const kanalId = db.fetch(`isimlog_${yeni.guild.id}`);
@@ -1413,34 +1339,40 @@ client.on("guildMemberUpdate", async (eski, yeni) => {
   } catch {}
 });
 
-// ---------- Hata yakalama ----------
 const tokenLeak = /[\w-]{24}\.[\w-]{6}\.[\w-]{27}/g;
 client.on("warn", e => console.log(String(e).replace(tokenLeak, "[redacted]")));
 client.on("error", e => console.log(String(e).replace(tokenLeak, "[redacted]")));
 process.on("unhandledRejection", e => console.error("Yakalanmamış asenkron hata:", e?.message || e));
 process.on("uncaughtException", e => console.error("Yakalanmamış hata:", e?.message || e));
 
-// ---------- AI cevaplar.json Hot Reload ----------
-const cevaplarPath = path.join(__dirname, "cevaplar.json");
-fs.watch(cevaplarPath, (event) => {
-  if (event === "change") {
-    console.log("🔄 [AI] cevaplar.json değişti, yeniden yükleniyor...");
-    try {
-      delete require.cache[require.resolve("./ai/matcher")];
-      delete require.cache[require.resolve("./ai/handler")];
-      const { reloadMatcher } = require("./ai/handler");
-      reloadMatcher();
-      console.log("✅ [AI] Yeniden yüklendi");
-    } catch (e) {
-      console.error("❌ [AI] Reload hatası:", e.message);
-    }
+try {
+  const cevaplarPath = path.join(__dirname, "cevaplar.json");
+  if (fs.existsSync(cevaplarPath)) {
+    fs.watch(cevaplarPath, (event) => {
+      if (event === "change") {
+        console.log("🔄 [AI] cevaplar.json değişti, yeniden yükleniyor...");
+        try {
+          delete require.cache[require.resolve("./ai/matcher")];
+          delete require.cache[require.resolve("./ai/handler")];
+          const { reloadMatcher } = require("./ai/handler");
+          if (typeof reloadMatcher === "function") reloadMatcher();
+          console.log("✅ [AI] Yeniden yüklendi");
+        } catch (e) {
+          console.error("❌ [AI] Reload hatası:", e.message);
+        }
+      }
+    });
+    console.log("📚 [AI] cevaplar.json izleniyor (hot reload aktif)");
+  } else {
+    console.warn("⚠️ [AI] cevaplar.json bulunamadı — hot reload kapalı");
   }
-});
+} catch (e) {
+  console.warn("⚠️ [AI] Hot reload başlatılamadı:", e.message);
+}
 
-// ---------- Login ----------
 const discordToken = process.env.DISCORD_BOT_TOKEN || process.env.token;
 if (!discordToken) {
-  console.warn("[UYARI] .env içinde DISCORD_BOT_TOKEN yok. Örnek: .env.example dosyasına bakın.");
+  console.warn("[UYARI] .env içinde DISCORD_BOT_TOKEN yok.");
 } else {
   client.login(discordToken).catch(err => console.error("Discord Login Hatası:", err.message));
 }
