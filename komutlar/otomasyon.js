@@ -194,7 +194,7 @@ exports.run = async (client, message, args) => {
 
   // --- Aç / kurulum ---
   const mevcut = db.fetch(`otomasyon_${gid}`);
-  // Zaten kuruluysa bidaha kurulamaz
+  // Zaten kuruluysa tekrar kurulamaz
   if (mevcut?.aktif && !mevcut.duraklatildi) {
     const { soru } = sunucuSayilari(gid);
     return message.reply(t(lang, "otomasyon.zatenKurulu", { sayi: soru })).catch(() => {});
