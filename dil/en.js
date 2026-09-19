@@ -236,7 +236,9 @@ module.exports = {
     cevapsizAciklama: "{kullanici} asked, no answer found:\n**{soru}**",
     sebepSor: "🎫 Ticket reason (type within 30 seconds):",
     sebepZamanAsimi: "⏰ Time's up, ticket not opened.",
-    biletZatenAcik: "🎫 You already have an open ticket: {kanal}\nClose it first."
+    biletZatenAcik: "🎫 You already have an open ticket: {kanal}\nClose it first.",
+    redredildi: "❌ **Rejected:** {soru}",
+    gunlukLimitDoldu: "⚠️ Daily message limit reached ({limit}/day). Try again tomorrow."
   },
   veri: {
     kullanim: "Usage: `r!veri gör <serverID|userID>` | `r!veri sil <serverID|userID>`",
@@ -505,18 +507,15 @@ module.exports = {
     kayitBasarili: "{uye} has been registered successfully! Have fun!"
   },
 onay: {
-    baslik: 'Data Processing Consent',
-    aciklama: 'To use commands, first pick your language, then read the docs below and accept.',
-    dokuman: '📄 Documentation',
-    gizlilik: '🔒 Privacy Policy',
-    kosullar: '📜 Terms of Service',
-    kabulEt: '✅ Save & Accept',
-    reddet: '❌ I Decline',
-    kabulOk: '✅ Consent saved! You can now use commands.',
-    redBilgi: 'Consent is required to use commands. Press **Save & Accept** in the language menu.',
-    redKilit: '❌ You declined — commands stay locked. I will show this consent panel on every command attempt until you accept. You can change your language below and unlock commands with **Save & Accept**.',
-    gerekli: 'You must give data processing consent first! Press **Save & Accept** in the language menu. (r!dil)',
-  },
+    baslik: 'Terms of Service and Privacy Policy',
+    aciklama: 'To continue using RiseBunny, you must accept the following terms:\n\n1. **Data Processing**: Your commands and messages may be processed to improve our service.\n2. **Data Retention**: Your chat history and command usage is stored to improve service quality.\n3. **Third-Party Sharing**: Your data will not be shared with third parties without your consent.\n4. **Usage Rules**: Spam, abuse, or generating harmful content is prohibited.\n5. **Changes**: These terms may be updated without prior notice.\n\nPress **\"Accept\"** to continue.',
+    kabulEt: '✅ Accept',
+    reddet: '❌ Decline',
+    kabulOk: '✅ Consent accepted! You can now use all commands.',
+    reddetMesaj: '❌ Terms of Service not accepted. You cannot use commands.\nYou can retry anytime by typing `r!dil`.',
+    gerekli: '⚠️ You must accept the **Terms of Service** before using RiseBunny.\n\nPlease press the **\"Accept\"** button below to consent.\n\n💡 **Continue from Where You Left Off**: Pick up where you left off, just keep typing `rise <question>`.',
+    onayPanel: '📋 **Terms of Service and Privacy Policy**\n\nBy using RiseBunny, you agree to the following:\n\n1. Your data is processed to improve service quality\n2. Your data is never shared without your consent\n3. **Your data is not shared with 3rd parties**\n4. Spam/harmful content is prohibited\n5. Terms may be updated without notice\n\nPress **Accept** to continue.'
+},
   seviye: {
     vipRolKazandin: 'Congratulations! You reached **Level {seviye}** on RiseBunny!\n\n**Reward:** VIP Role **{rol}** has been given on **{sunucu}** server!\n\n💸 Bonus: {odul} 💸',
     vipRolDm: 'Congratulations on reaching **Level {seviye}**!\n\n**Reward:** VIP Role **awaiting you on our server**.\nJoin: https://dsc.gg/risebunny\nUse `r!rolal` after joining to claim your role!\n\n💸 Bonus: {odul} 💸',

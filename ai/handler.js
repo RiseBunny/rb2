@@ -320,6 +320,31 @@ async function aiIsle(message, client) {
   }
   aiCooldown.set(message.author.id, now);
 
+  // 5) Günlük mesaj limiti kontrolü (75/gün, özel sunucuda +50 = 125/gün)
+  const GUNLUK_LIMIT = 75;
+  const OZEL_SUNUCU_ID = "1192948403232067725";
+  const OZEL_LIMIT = 50;
+  const gunlukKey = `gunluk_ai_${message.author.id}`;
+  const gunlukVeri = db.fetch(gunlukKey) || { count: 0, date: new Date().toDateString() };
+  const bugun = new Date().toDateString();
+  if (gunlukVeri.date !== bugun) {
+    gunlukVeri.count = 0;
+    gunlukVeri.date = bugun;
+  }
+  const ozelSunucu = message.guild && message.guild.id === OZEL_SUNUCU_ID;
+  const limit = ozelSunucu ? GUNLUK_LIMIT + OZEL_LIMIT : GUNLUK_LIMIT;
+  if (gunlukVeri.count >= limit) {
+    const lang = getLangSync(message.author.id);
+    const { t } = require("../dil");
+    const kalan = lang === "tr" 
+      ? `Günlük mesaj hakkınız doldu (${limit}/gün). Destek sunucumuza katılarak günde +50 hak daha kazanabilirsiniz: ${process.env.DESTEK_SUNUCU_LINK || "https://discord.gg/mEfz5SfpbR"}`
+      : `Daily message limit reached (${limit}/day). Join our support server for +50 more messages/day: ${process.env.DESTEK_SUNUCU_LINK || "https://discord.gg/mEfz5SfpbR"}`;
+    await message.reply({ content: `${gunlukVeri.count}/${limit} kullanıldı. ${kalan}`, allowedMentions: { repliedUser: false } }).catch(() => {});
+    return true;
+  }
+  gunlukVeri.count++;
+  db.set(gunlukKey, gunlukVeri);
+
   // 6a) Global local bilgi tabanı ÖNCE (cevaplar.json + ai_qa_, %50+ benzerlik)
   const sonuc = await matcher.bul(soru);
 
@@ -744,7 +769,7 @@ async function ownerButonIsle(interaction, client) {
     return true;
   }
 
-  // Owner AI sil (Reddet) butonu (çevirili)
+  // Owner AI sil (Reddet) butonu - mesajı sil ve reddedildi mesajı gönder
   if (customId.startsWith("owner_ai_delete_")) {
     const { t } = require("../dil");
     if (interaction.user.id !== OWNER_ID) {
@@ -775,16 +800,19 @@ async function ownerButonIsle(interaction, client) {
 
       try { matcher.cacheTemizle(); } catch {}
 
+      // Orijinal mesajı sil ve reddedildi mesajı gönder
+      try {
+        await interaction.deleteReply().catch(() => {});
+      } catch {}
+      
       const lang = getLangSync(interaction.user.id);
       const { t } = require("../dil");
-
-      await interaction.update({
-        content: t(lang, "ai.silindi", { soru, sayi: silinen }),
-        components: [],
-        embeds: []
+      await interaction.channel.send({ 
+        content: t(lang, "ai.reddedildi", { soru }), 
+        allowedMentions: { repliedUser: false } 
       }).catch(() => {});
 
-      console.log(`🗑️ [Owner AI Delete] ${interaction.user.tag}: "${soru}" silindi (${silinen} kayıt)`);
+      console.log(`🗑️ [Owner AI Delete] ${interaction.user.tag}: "${soru}" reddedildi`);
 
     } catch (e) {
       console.error("[Owner AI Delete Error]:", e);

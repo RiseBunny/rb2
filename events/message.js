@@ -12,6 +12,28 @@ const { aiIsle } = require("../ai/handler");
 // Admin etiket karşılama spam koruması (sunucu+kullanıcı başına 60 sn)
 const etiketCooldown = new Map();
 
+// Onay/Terms of Service kontrolü
+async function checkConsent(message, client) {
+  const lang = await getLang(message.author.id);
+  const { t } = require("../dil");
+  
+  // Sahip bypass
+  const { SAHIP_ID } = require("../utils");
+  if (message.author.id === SAHIP_ID) return true;
+  
+  // Onay kontrolü
+  const { hasConsent, getConsent } = require("../dil");
+  if (hasConsent(message.author.id)) return true;
+  
+  // Onay gerekli - panel göster
+  try {
+    const { dilPaneli } = require("../komutlar/dil");
+    await message.reply(dilPaneli(process.env.PREFIX || "r!", { isOwner: false, userNeedsLang: true, guildNeedsLang: false })).catch(() => {});
+  } catch {}
+  await message.reply(t(await getLang(message.author.id), "onay.gerekli")).catch(() => {});
+  return false;
+}
+
 module.exports = async message => {
   const client = message.client;
   if (!client || message.author?.bot) return;

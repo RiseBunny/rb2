@@ -415,8 +415,16 @@ module.exports = {
     "premium-panel": { aciklama: "Premium ayrıcalıklarını gösterir.", kullanim: "premium-panel" },
     "kasa": { aciklama: "Çalınamayan kişisel kasa.", kullanim: "kasa [yatır <miktar> | çek <miktar>]" },
     "günlük-bonus": { aciklama: "Premium üyelere özel günlük bonus.", kullanim: "günlük-bonus" },
+  onay: {
+    baslik: "Kullanım Koşulları ve Gizlilik Politikasi",
+    aciklama: "RiseBunny'yi kullanmaya devam etmek için aşağıdaki koşulları kabul etmeniz gerekir:\n\n1. **Veri İşleme**: Komutlarınız ve mesajlarınız hizmetimizi iyileştirmek için işlenebilir.\n2. **Veri Saklama**: Sohbet geçmişiniz ve komut kullanımlarınız hizmet kalitesini artırmak için saklanır.\n3. **Üçüncü Taraf Paylaşımı**: Verileriniz izniniz olmadan üçüncü taraflarla paylaşılmaz.\n4. **Kullanım Kuralları**: Spam, kötüye kullanım veya zararlı içerik üretmek yasaktır.\n5. **Değişiklikler**: Bu koşullar önceden haber verilmeksizin güncellenebilir.\n\nDevam etmek için **\"Kabul Et\"** butonuna basın.",
+    kabulEt: "✅ Kabul Et",
+    reddet: "❌ Reddet",
+    kabulOk: "✅ Onayınız alındı! Artık tüm komutları kullanabilirsiniz.",
+    reddetMesaj: "❌ Kullanım koşulları kabul edilmediği için komutları kullanamazsınız.\nDilediğiniz zaman `r!dil` yazarak tekrar deneyebilirsiniz.",
+    gerekli: "⚠️ RiseBunny'yi kullanmadan önce **Kullanım Koşulları**'nı kabul etmeniz gerekiyor.\n\nLütfen aşağıdan **\"Kabul Et\"** butonuna basarak onay verin.\n\n💡 **Kaldığınız Yerden Devam Edin**: Kaldığınız yerden devam edebilirsiniz, sadece `rise <soru>` yazmaya devam edin.",
+    onayPanel: "📋 **Kullanım Koşulları ve Gizlilik Politikasi**\n\nRiseBunny'yi kullanarak aşağıdaki koşulları kabul etmiş olursunuz:\n\n1. Verileriniz hizmet kalitesini artırmak için işlenir\n2. Verileriniz izniniz olmadan paylaşılmaz\n3. **Verileriniz 3. taraflarla paylaşılmaz**\n4. Spam/zararlı içerik yasaktır\n5. Koşullar güncellenebilir\n\nDevam etmek için **Kabul Et** butonuna basın.",
   },
-  sistem: {
     yonetici: "Bu komutu kullanabilmek için **Yönetici** yetkisine sahip olmalısın!",
     mesajYonet: "Bu komut için Mesajları Yönet izni gerekir.",
     sunucuYonet: "Bu komutu kullanabilmek için **Sunucuyu Yönet** iznine sahip olmalısın!",
@@ -440,7 +448,17 @@ module.exports = {
     sonuc: "Sonuç",
     eylem: "Eylem",
     isim: "İsim",
-    bilinmiyor: "Bilinmiyor"
+bilinmiyor: "Bilinmiyor"
+  },
+  onay: {
+    baslik: "Kullanım Koşulları ve Gizlilik Politikasi",
+    aciklama: "RiseBunny'yi kullanmaya devam etmek için aşağıdaki koşulları kabul etmeniz gerekir:\n\n1. **Veri İşleme**: Komutlarınız ve mesajlarınız hizmetimizi iyileştirmek için işlenebilir.\n2. **Veri Saklama**: Sohbet geçmişiniz ve komut kullanımlarınız hizmet kalitesini artırmak için saklanır.\n3. **Üçüncü Taraf Paylaşımı**: Verileriniz izniniz olmadan üçüncü taraflarla paylaşılmaz.\n3. **Kullanım Kuralları**: Spam, kötüye kullanım veya zararlı içerik üretmek yasaktır.\n4. **Değişiklikler**: Bu koşullar önceden haber verilmeksizin güncellenebilir.\n\nDevam etmek için **\"Kabul Et\"** butonuna basın.",
+    kabulEt: "✅ Kabul Et",
+    reddet: "❌ Reddet",
+    kabulOk: "✅ Onayınız alındı! Artık tüm komutları kullanabilirsiniz.",
+    reddetMesaj: "❌ Kullanım koşulları kabul edilmediği için komutları kullanamazsınız.\nDilediğiniz zaman `r!dil` yazarak tekrar deneyebilirsiniz.",
+    gerekli: "⚠️ RiseBunny'yi kullanmadan önce **Kullanım Koşulları**'nı kabul etmeniz gerekiyor.\n\nLütfen aşağıdan **\"Kabul Et\"** butonuna basarak onay verin.\n\n💡 **Kaldığınız Yerden Devam Edin**: Kaldığınız yerden devam edebilirsiniz, sadece `rise <soru>` yazmaya devam edin.",
+    onayPanel: "📋 **Kullanım Koşulları ve Gizlilik Politikasi**\n\nRiseBunny'yi kullanarak aşağıdaki koşulları kabul etmiş olursunuz:\n\n1. Verileriniz hizmet kalitesini artırmak için işlenir\n2. Verileriniz izniniz olmadan paylaşılmaz\n3. **Verileriniz 3. taraflarla paylaşılmaz**\n4. Spam/zararlı içerik yasaktır\n4. Koşullar güncellenebilir\n\nDevam etmek için **Kabul Et** butonuna basın.",
   },
   kayitSistem: {
     kayitciGerek: "Bu komutu kullanabilmen için {rol} rolüne sahip olman lazım!",
@@ -531,6 +549,8 @@ onay: {
     cevapsizAciklama: "{kullanici} sordu, cevap bulunamadı:\n**{soru}**",
     sebepSor: "🎫 Ticket sebebi (30 saniye içinde yazın):",
     sebepZamanAsimi: "⏰ Süre doldu, ticket açılamadı.",
-    biletZatenAcik: "🎫 Zaten açık bir biletin var: {kanal}\nÖnce onu kapatmalısın."
+    biletZatenAcik: "🎫 Zaten açık bir biletin var: {kanal}\nÖnce onu kapatmalısın.",
+    redredildi: "❌ **Reddedildi:** {soru}",
+    gunlukLimitDoldu: "⚠️ Günlük mesaj hakkınız doldu ({limit}/gün). Yarın tekrar deneyin."
   },
 };
