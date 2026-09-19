@@ -10,6 +10,8 @@
 const SoruEslestirici = require("./matcher");
 const { groqSor, formatEgitimVerileri, createOwnerLogError, createOwnerLogLearn, createOwnerLogNoAnswer, OWNER_ID } = require("./groq");
 const db = require("croxydb");
+const fs = require("fs");
+const path = require("path");
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 const { getLangSync } = require("../dil");
 const { ownerLog } = require("../utils");
@@ -25,6 +27,10 @@ const COOLDOWN_MS = 3000;
 const groqCooldown = new Map();
 const GROQ_COOLDOWN_MS = 10000;
 
+// Learn butonu için cache (base64 JSON yerine short ID kullan)
+const learnCache = new Map();
+const LEARN_CACHE_TTL = 10 * 60 * 1000; // 10 dakika
+
 const AI_CONFIG = {
   TETIKLEYICI: "rise",
   KARAKTER_LIMITI: 4000,
@@ -35,28 +41,54 @@ const AI_CONFIG = {
 
 /**
  * Eğitim verilerini Groq system prompt için formatla
+ * cevaplar.json'dan TÜM Q&A çiftlerini ve croxydb'deki öğrenilenleri birleştirir
  */
 function egitimVerileriniHazirla() {
   try {
+    const fs = require("fs");
+    const path = require("path");
     const all = db.all() || {};
     const veriler = [];
     
+    // 1. Croxydb'den öğrenilen veriler (ai_qa_*)
     for (const [key, value] of Object.entries(all)) {
       if (key.startsWith("ai_qa_") && value && value.soru && value.cevap) {
         veriler.push({
           soru: value.soru,
           cevap: value.cevap,
-          kategori: value.kategori || "genel"
+          kategori: value.kategori || "genel",
+          kaynak: "learned"
         });
       }
     }
     
-    // Kategorilere göre grupla, her kategori max 3 örnek
+    // 2. cevaplar.json'dan TÜM sabit Q&A çiftlerini ekle
+    try {
+      const cevaplarPath = path.join(__dirname, "..", "cevaplar.json");
+      const cevaplarData = JSON.parse(fs.readFileSync(cevaplarPath, "utf8"));
+      
+      for (const item of cevaplarData.cevaplar) {
+        const kategori = item.kategori || "genel";
+        for (const soru of item.sorular) {
+          // Sadece Türkçe cevabı kullan (Groq diline göre çevirecek)
+          veriler.push({
+            soru: soru,
+            cevap: item.cevap,
+            kategori: kategori,
+            kaynak: "builtin"
+          });
+        }
+      }
+    } catch (e) {
+      console.warn("[AI] cevaplar.json okunamadı:", e.message);
+    }
+    
+    // Kategorilere göre grupla, her kategori max 5 örnek (sabit + öğrenilen)
     const kategoriler = {};
     for (const v of veriler) {
       const kat = v.kategori || "genel";
       if (!kategoriler[kat]) kategoriler[kat] = [];
-      if (kategoriler[kat].length < 3) {
+      if (kategoriler[kat].length < 5) {
         kategoriler[kat].push(v);
       }
     }
@@ -170,7 +202,8 @@ async function ogrenenCevapKaydet(interaction, soru, cevap) {
     
   } catch (e) {
     console.error("[AI Öğrenme Hatası]:", e);
-    await interaction.reply({ content: "❌ Kaydetme sırasında hata oluştu.", ephemeral: true }).catch(() => {});
+    const lang = getLangSync(interaction.user.id);
+    await interaction.reply({ content: lang === "tr" ? "❌ Kaydetme sırasında hata oluştu." : "❌ An error occurred while saving.", ephemeral: true }).catch(() => {});
   }
 }
 
@@ -184,13 +217,15 @@ async function aiIsle(message, client) {
   const icerik = message.content?.trim();
   if (!icerik) return false;
 
-  // 1) "rise" ile başlıyor mu? (büyük/küçük harf duyarsız)
-  if (!icerik.toLowerCase().startsWith("rise ")) return false;
+  // 1) "rise" ile başlıyor mu? (büyük/küçük harf duyarsız) - "rise" veya "rise " kabul et
+  const lowerContent = icerik.toLowerCase();
+  if (!lowerContent.startsWith("rise")) return false;
 
-  // 2) Kullanıcının sorusunu al
-  const soru = icerik.slice(5).trim(); // "rise ".length = 5
+  // 2) Kullanıcının sorusunu al - "rise" (4 karakter) veya "rise " (5 karakter)
+  const tetikleyiciUzunluk = lowerContent.startsWith("rise ") ? 5 : 4;
+  const soru = icerik.slice(tetikleyiciUzunluk).trim();
 
-  // 3) Soru boşsa
+  // 3) Soru boşsa - karşılama mesajı
   if (!soru) {
     const lang = getLangSync(message.author.id);
     const isTr = lang === "tr";
@@ -298,11 +333,20 @@ async function aiIsle(message, client) {
   if (groqSonuc.success) {
     const cevap = groqSonuc.cevap;
     
-    // "Öğren" butonu oluştur
+    // Learn butonu için short ID oluştur (base64 JSON yerine short ID)
+    const learnId = `learn_${Date.now().toString(36)}_${Math.random().toString(36).substr(2, 6)}`;
+    learnCache.set(learnId, { soru, cevap });
+    setTimeout(() => learnCache.delete(learnId), LEARN_CACHE_TTL);
+    
+    // Buton etiketi kullanıcının diline göre
+    const lang = getLangSync(message.author.id);
+    const isTr = lang === "tr";
+    
+    // "RiseBunny'ye öğret" butonu oluştur
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId(`ai_learn_${Buffer.from(JSON.stringify({soru, cevap})).toString('base64').slice(0, 80)}`)
-        .setLabel("🧠 Öğren")
+        .setCustomId(`ai_learn_${learnId}`)
+        .setLabel(isTr ? "🧠 RiseBunny'ye öğret" : "🧠 Teach RiseBunny")
         .setStyle(ButtonStyle.Success)
         .setEmoji("🧠")
     );
@@ -351,14 +395,27 @@ async function learnButonIsle(interaction, client) {
   if (!customId.startsWith("ai_learn_")) return false;
 
   try {
-    const encoded = customId.replace("ai_learn_", "");
-    const { soru, cevap } = JSON.parse(Buffer.from(encoded, 'base64').toString());
+    const learnId = customId.replace("ai_learn_", "");
+    const data = learnCache.get(learnId);
+    
+    if (!data) {
+      const lang = getLangSync(interaction.user.id);
+      await interaction.reply({ 
+        content: lang === "tr" ? "❌ Bu öğretme isteğinin süresi doldu. Lütfen tekrar deneyin." : "❌ This teach request has expired. Please try again.", 
+        ephemeral: true 
+      }).catch(() => {});
+      return true;
+    }
+    
+    const { soru, cevap } = data;
+    learnCache.delete(learnId); // Tek kullanımlık
     
     await ogrenenCevapKaydet(interaction, soru, cevap);
     return true;
   } catch (e) {
     console.error("[AI Learn Button Error]:", e);
-    await interaction.reply({ content: "❌ İşlem sırasında hata oluştu.", ephemeral: true }).catch(() => {});
+    const lang = getLangSync(interaction.user.id);
+    await interaction.reply({ content: lang === "tr" ? "❌ İşlem sırasında hata oluştu." : "❌ An error occurred during the operation.", ephemeral: true }).catch(() => {});
     return true;
   }
 }
@@ -407,7 +464,8 @@ async function ownerButonIsle(interaction, client) {
       
     } catch (e) {
       console.error("[Owner AI Save Error]:", e);
-      await interaction.reply({ content: "❌ Kaydetme sırasında hata oluştu.", ephemeral: true }).catch(() => {});
+      const lang = getLangSync(interaction.user.id);
+      await interaction.reply({ content: lang === "tr" ? "❌ Kaydetme sırasında hata oluştu." : "❌ An error occurred while saving.", ephemeral: true }).catch(() => {});
     }
     return true;
   }
@@ -415,7 +473,8 @@ async function ownerButonIsle(interaction, client) {
   // Owner AI sil butonu
   if (customId.startsWith("owner_ai_delete_")) {
     if (interaction.user.id !== OWNER_ID) {
-      return interaction.reply({ content: "❌ Bu butonu sadece sahibim kullanabilir.", ephemeral: true }).catch(() => {});
+      const lang = getLangSync(interaction.user.id);
+      return interaction.reply({ content: lang === "tr" ? "❌ Bu butonu sadece sahibim kullanabilir." : "❌ Only my owner can use this button.", ephemeral: true }).catch(() => {});
     }
     
     try {
@@ -447,7 +506,8 @@ async function ownerButonIsle(interaction, client) {
       
     } catch (e) {
       console.error("[Owner AI Delete Error]:", e);
-      await interaction.reply({ content: "❌ Silme sırasında hata oluştu.", ephemeral: true }).catch(() => {});
+      const lang = getLangSync(interaction.user.id);
+      await interaction.reply({ content: lang === "tr" ? "❌ Silme sırasında hata oluştu." : "❌ An error occurred while deleting.", ephemeral: true }).catch(() => {});
     }
     return true;
   }
@@ -539,7 +599,8 @@ async function ownerModalIsle(interaction, client) {
       
     } catch (e) {
       console.error("[Owner AI Teach Modal Error]:", e);
-      await interaction.reply({ content: "❌ Öğretme sırasında hata oluştu.", ephemeral: true }).catch(() => {});
+      const lang = getLangSync(interaction.user.id);
+      await interaction.reply({ content: lang === "tr" ? "❌ Öğretme sırasında hata oluştu." : "❌ An error occurred while teaching.", ephemeral: true }).catch(() => {});
     }
     return true;
   }
@@ -605,5 +666,6 @@ module.exports = {
   ownerModalIsle,
   cacheTemizle,
   AI_CONFIG,
-  matcher
+  matcher,
+  learnCache
 };
