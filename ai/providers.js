@@ -5,24 +5,10 @@
  */
 const fetch = require("node-fetch");
 
+// Sadece test edilmiş ve çalışan modeller
 const NVIDIA_MODELS = [
-  "nvidia/nemotron-3-super-120b-a12b",
-  "nvidia/llama-3.3-nemotron-super-49b-v1.5",
-  "nvidia/nvidia-nemotron-nano-9b-v2",
-  "deepseek-ai/deepseek-v4-pro",
-  "moonshotai/kimi-k2.6",
-  "meta/llama-4-maverick-17b-128e-instruct",
-  "minimaxai/minimax-m2.7",
-  "meta/llama-3.3-70b-instruct",
-  "meta/llama-3.1-405b-instruct",
-  "moonshotai/kimi-k2-instruct",
-  "qwen/qwen3-coder-480b-a35b-instruct",
-  "qwen/qwen3.5-397b-a17b",
-  "mistralai/mistral-large-3-675b-instruct-2512",
-  "mistralai/magistral-small-2506",
-  "bytedance/seed-oss-36b-instruct",
-  "openai/gpt-oss-120b",
-  "openai/gpt-oss-20b"
+  "nvidia/nemotron-3-super-120b-a12b",  // ✅ Çalışıyor
+  "openai/gpt-oss-20b"                   // ✅ Çalışıyor
 ];
 
 const OPENROUTER_MODELS = [
@@ -38,7 +24,7 @@ const OPENROUTER_MODELS = [
 const PROVIDERS = [
   { name: "groq", key: "GROQ_API_KEY", url: "https://api.groq.com/openai/v1/chat/completions", model: "openai/gpt-oss-20b", type: "openai" },
   { name: "nvidia", key: "NVIDIA_API_KEY", url: "https://integrate.api.nvidia.com/v1/chat/completions", models: NVIDIA_MODELS, modelIndex: 0, type: "openai" },
-  { name: "gemini", key: "GEMINI_API_KEY", url: "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent", type: "gemini", fallbackUrl: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent" },
+  { name: "gemini", key: "GEMINI_API_KEY", url: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent", type: "gemini", fallbackUrl: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent" },
   { name: "cerebras", key: "CEREBRAS_API_KEY", url: "https://api.cerebras.ai/v1/chat/completions", model: "qwen-3.8-27b", type: "openai" },
   { name: "openrouter", key: "OPENROUTER_API_KEY", url: "https://openrouter.ai/api/v1/chat/completions", models: OPENROUTER_MODELS, modelIndex: 0, type: "openai" },
 ];
@@ -47,12 +33,21 @@ const PROVIDERS = [
 let startIndex = 0;
 
 async function callOpenAI(p, systemPrompt, soru, apiKey) {
+  // System prompt çok uzunsa kısalt (Groq token limiti 8000 TPM için)
+  // Yaklaşık 1 token = 4 karakter, max 6000 token = ~24000 karakter
+  // Ama güvenli olması için 4000 token = ~16000 karakter
+  const maxSystemChars = 12000;
+  let finalSystemPrompt = systemPrompt;
+  if (systemPrompt.length > maxSystemChars) {
+    finalSystemPrompt = systemPrompt.slice(0, maxSystemChars) + "\n\n[Not: Sistem promptu kısaltıldı]";
+  }
+  
   const res = await fetch(p.url, {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
     body: JSON.stringify({
       model: p.model,
-      messages: [{ role: "system", content: systemPrompt }, { role: "user", content: soru }],
+      messages: [{ role: "system", content: finalSystemPrompt }, { role: "user", content: soru }],
       max_tokens: 300, temperature: 0.7, top_p: 0.9
     }),
     timeout: 15000

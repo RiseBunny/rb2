@@ -354,6 +354,17 @@ async function aiIsle(message, client) {
   const tetikleyiciUzunluk = lowerContent.startsWith("rise ") ? 5 : 4;
   const soru = icerik.slice(tetikleyiciUzunluk).trim();
 
+  // Bakım modu kontrolü - bakımda AI kullanılamaz
+  const db = require("croxydb");
+  if (db.fetch("8182bakımaç81")) {
+    const lang = getLangSync(message.author.id);
+    await message.reply({
+      content: lang === "tr" ? "🔧 Bot bakım modunda. AI şu an kullanılamıyor." : "🔧 Bot is in maintenance. AI is currently unavailable.",
+      allowedMentions: { repliedUser: false }
+    }).catch(() => {});
+    return true;
+  }
+
   // Soru boşsa - karşılama mesajı
   if (!soru) {
     const lang = getLangSync(message.author.id);
