@@ -199,6 +199,7 @@ module.exports = {
     kategoriIdYok: "No category found with this ID. Mention a category, type a valid ID, or type `create`.",
     kurulumIptal: "❌ Setup cancelled.",
     kurulumZamanAsimi: "⏰ Time's up, setup cancelled.",
+    etiketKarsilama: "👋 Hello {kullanici}! I'm **RiseBunny AI** 🐰\n\nDescribe your issue with `rise <question>` and I'll help you. I'll answer what I know right away, and ask you to open a ticket for what I can't. 🎫",
     onayBaslik: "🧠 AI Teach Suggestion",
     onayAciklama: "{kullanici} taught this:\n\n**Question:** {soru}\n**Answer:** {cevap}\n\nAdmins can approve or reject.",
     onayKaydet: "✅ Save",

@@ -199,6 +199,7 @@ module.exports = {
     kategoriIdYok: "Bu ID ile kategori bulunamadı. Kategoriyi etiketleyin, geçerli bir ID yazın veya `oluştur` yazın.",
     kurulumIptal: "❌ Kurulum iptal edildi.",
     kurulumZamanAsimi: "⏰ Süre doldu, kurulum iptal edildi.",
+    etiketKarsilama: "👋 Merhaba {kullanici}! Ben **RiseBunny AI** 🐰\n\nSorununu `rise <sorun>` yazarak belirtirsen sana yardımcı olurum. Cevabını bildiklerimi hemen cevaplarım, bilemediklerim için ticket açmanı isterim. 🎫",
     onayBaslik: "🧠 AI Öğretme Önerisi",
     onayAciklama: "{kullanici} şunu öğretti:\n\n**Soru:** {soru}\n**Cevap:** {cevap}\n\nYetkililer onaylayabilir veya reddedebilir.",
     onayKaydet: "✅ Kaydet",
