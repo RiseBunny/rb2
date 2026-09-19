@@ -9,9 +9,6 @@ const { aiIsle } = require("../ai/handler");
 // Yanlış/eksik kullanımlar logu kirletmesin diye her komut SADECE
 // işlemi gerçekten tamamlayınca kendi ownerLog/komutLog çağrısını yapar.
 
-// Admin etiket karşılama spam koruması (sunucu+kullanıcı başına 60 sn)
-const etiketCooldown = new Map();
-
 // Onay/Terms of Service kontrolü
 async function checkConsent(message, client) {
   const lang = await getLang(message.author.id);
@@ -47,44 +44,6 @@ module.exports = async message => {
   if (!message.guild || !message.member) return;
 
   const prefix = process.env.PREFIX || PREFIX;
-
-  // 👑 Admin etiketleme karşılama (otomasyon kurulu sunucuda)
-  // Komut ve rise mesajlarında tetiklenmez (onları kendi akışları karşılar)
-  // AMA admin etiketlenirse rise komutunda bile çalışmalı
-  const isAdminMention = message.mentions.members?.some(m => 
-    !m.user.bot && m.id !== message.author.id && m.id !== client.user?.id
-  );
-  
-  if (isAdminMention) {
-    try {
-      const { otomasyonDurum } = require("../komutlar/otomasyon");
-      const oto = otomasyonDurum(message.guild.id);
-      if (oto && !oto.bitmis) {
-        const etiketlenenler = [...(message.mentions.members?.values() || [])]
-          .filter(m => !m.user.bot && m.id !== message.author.id && m.id !== client.user?.id)
-          .slice(0, 5); // Max 5 admin
-        for (const uye of etiketlenenler) {
-          // Admin kontrolü: Administrator permission VEYA "Admin/Moderator" rolü
-          const adminRolleri = uye.roles.cache.filter(r => 
-            r.permissions.has(PermissionFlagsBits.Administrator) || 
-            /admin|moderator|yönetici|mod/i.test(r.name)
-          );
-          if (adminRolleri.size > 0) {
-            const key = `etiket_${message.guild.id}_${message.author.id}`;
-            const son = etiketCooldown.get(key) || 0;
-            if (Date.now() - son < 60000) break; // 60 sn spam koruması
-            etiketCooldown.set(key, Date.now());
-            
-            const lang = await getLang(message.author.id);
-            const { t } = require("../dil");
-            const metin = t(lang, "otomasyon.etiketKarsilama", { kullanici: `${message.author}` });
-            await message.reply({ content: metin, allowedMentions: { repliedUser: false } }).catch(() => {});
-            break;
-          }
-        }
-      }
-    } catch {}
-  }
 
   if (!message.content.startsWith(prefix)) return;
 

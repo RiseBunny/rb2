@@ -89,11 +89,10 @@ async function adminEtiketKontrol(message, client) {
 
     // 7) Kullanıcının diline göre cevap
     const lang = getLangSync(message.author.id);
-    const prefix = process.env.PREFIX || "r!";
 
     const mesaj = lang === "tr"
-      ? `👋 ${message.author}, bir yetkiliyi etiketlediniz.\n\n💡 **Sorununuzu doğrudan bana sorabilirsiniz:**\n\`${prefix}rise <sorununuz>\` yazın — size hemen cevap vermeye çalışayım.\n\nEğer çözemezsem, sizi otomatik olarak **ticket** sistemine yönlendireceğim. 🐰`
-      : `👋 ${message.author}, you mentioned a staff member.\n\n💡 **You can ask me directly:**\nType \`${prefix}rise <your question>\` — I'll try to answer immediately.\n\nIf I can't solve it, I'll redirect you to the **ticket** system. 🐰`;
+      ? `👋 ${message.author}, bir yetkiliyi etiketlediniz.\n\n💡 **Sorununuzu doğrudan bana sorabilirsiniz:**\n\`rise <sorununuz>\` yazın — size hemen cevap vermeye çalışayım.\n\nEğer çözemezsem, sizi otomatik olarak **ticket** sistemine yönlendireceğim. 🐰`
+      : `👋 ${message.author}, you mentioned a staff member.\n\n💡 **You can ask me directly:**\nType \`rise <your question>\` — I'll try to answer immediately.\n\nIf I can't solve it, I'll redirect you to the **ticket** system. 🐰`;
 
     await message.reply({
       content: mesaj,
