@@ -121,7 +121,10 @@ module.exports = {
     kategoriOneri: "Öneri",
     kategoriDiger: "Diğer",
     kategoriYok: "Kategori ayarlanmamis. Ayarlamak icin: {prefix}ticketayarla kategori #kategori",
-    kategoriOk: "Ticket kategorisi basariyla ayarlandi: {kategori}"
+    kategoriOk: "Ticket kategorisi basariyla ayarlandi: {kategori}",
+    kategoriOtomatik: "Ticket kategorisi otomatik kuruldu: {kategori}",
+    ornekAcildi: "Örnek bilet açıldı: {kanal}\nKategori: {kategori}",
+    ornekSebep: "Örnek bilet (kurulum testi)"
   },
   premium: {
     aktif: "VIP uyeligin 30 gunlugune aktiflestirildi.",

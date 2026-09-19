@@ -121,7 +121,10 @@ module.exports = {
     kategoriOneri: "Suggestion",
     kategoriDiger: "Other",
     kategoriYok: "Ticket category not set. To set it: {prefix}ticketayarla category #category",
-    kategoriOk: "Ticket category set successfully: {kategori}"
+    kategoriOk: "Ticket category set successfully: {kategori}",
+    kategoriOtomatik: "Ticket category auto-created: {kategori}",
+    ornekAcildi: "Example ticket opened: {kanal}\nCategory: {kategori}",
+    ornekSebep: "Example ticket (setup test)"
   },
   premium: {
     aktif: "Your VIP membership has been activated for 30 days.",
