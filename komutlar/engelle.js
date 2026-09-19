@@ -21,9 +21,24 @@ exports.run = async (client, message, args) => {
   const sub = (args[0] || "").toLowerCase();
   const key = `engel_${message.guild.id}`;
 
+  // --- Aç: nerede engelleneceğini seç (butonlar) ---
+  if (sub === "aç" || sub === "ac" || sub === "open" || sub === "") {
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`engel_sunucu_${message.guild.id}`).setLabel(t(lang, "engelle.butonSunucu")).setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId(`engel_kanal_${message.guild.id}_${message.channel.id}`).setLabel(t(lang, "engelle.butonKanal")).setStyle(ButtonStyle.Primary)
+    );
+    const e = new EmbedBuilder().setColor("Orange")
+      .setTitle(t(lang, "engelle.baslik"))
+      .setDescription(t(lang, "engelle.kapsamSor"))
+      .setFooter({ text: t(lang, "engelle.altBilgi") });
+    return message.reply({ embeds: [e], components: [row] }).catch(() => {});
+  }
+
   if (sub === "kapat" || sub === "off") {
+    const cur = db.fetch(key);
     try { db.delete(key); } catch {}
-    try { require("../utils").ownerLog(client, `🚫 **Engel kapatıldı:** **${message.guild.name}** (${message.guild.id}) — ${message.author.tag}`).catch(() => {}); } catch {}
+    try { require("../utils").ownerLog(client, `🚫 **Engel kapatıldı:** **${message.guild.name}** (${message.guild.id}) — ${message.author.tag} (önceki: ${cur ? (cur.kapsam === "sunucu" ? "sunucu" : "kanal " + cur.kanalId) : "yok"})`).catch(() => {}); } catch {}
+    if (!cur) return message.reply(t(lang, "engelle.durumYok")).catch(() => {});
     return message.reply(t(lang, "engelle.kapatildi")).catch(() => {});
   }
 
@@ -49,4 +64,4 @@ exports.run = async (client, message, args) => {
 };
 
 exports.conf = { enabled: true, guildOnly: true, aliases: ["block", "komutengelle", "komut-engelle"], permLevel: 4, kategori: "moderasyon" };
-exports.help = { name: "engelle", description: "Komutları sunucuda veya kanalda engeller (Premium).", usage: "engelle | engelle kapat | engelle durum" };
+exports.help = { name: "engelle", description: "Komutları sunucuda veya kanalda engeller (Premium).", usage: "engelle | engelle aç | engelle kapat | engelle durum" };
