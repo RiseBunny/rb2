@@ -20,9 +20,10 @@ const { ownerLog } = require("../utils");
 // AI Matcher başlat (croxydb ile)
 const matcher = new SoruEslestirici(db);
 
-// Cooldown sadece spam koruması için (3 saniye)
+// Cooldown sadece spam koruması için (3 saniye) - AI cevap veremezse 10 saniye
 const aiCooldown = new Map();
 const COOLDOWN_MS = 3000;
+const AI_FAIL_COOLDOWN_MS = 10000;
 
 // Learn/owner butonları için cache (base64 JSON yerine short ID)
 const learnCache = new Map();
@@ -374,7 +375,7 @@ async function aiIsle(message, client) {
     return true;
   }
 
-  // Cooldown
+  // Cooldown (spam koruması - 3 saniye)
   const now = Date.now();
   const sonKullanim = aiCooldown.get(message.author.id) || 0;
   if (now - sonKullanim < COOLDOWN_MS) {
@@ -509,6 +510,9 @@ async function aiIsle(message, client) {
   }).catch(() => {});
 
   console.log(`❌ [AI Hata] ${message.author.tag}: "${soru}" → ${groqSonuc.error}`);
+
+  // AI cevap veremezse 10 saniye cooldown uygula
+  aiCooldown.set(message.author.id, Date.now() + (AI_FAIL_COOLDOWN_MS - COOLDOWN_MS));
 
   await cevapsizKanalaGonder(client, message, soru, lang);
 

@@ -902,10 +902,6 @@ if (AI) {
         const etiketIslendi = await AI.adminEtiketKontrol(message, client);
         if (etiketIslendi) return;
       }
-      if (typeof AI.aiIsle === "function") {
-        const aiIslendi = await AI.aiIsle(message, client);
-        if (aiIslendi) return;
-      }
     } catch (e) {
       console.error("[AI messageCreate] Hata:", e.message);
     }

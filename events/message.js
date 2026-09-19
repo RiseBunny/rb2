@@ -51,8 +51,8 @@ module.exports = async message => {
   // 👑 Admin etiketleme karşılama (otomasyon kurulu sunucuda)
   // Komut ve rise mesajlarında tetiklenmez (onları kendi akışları karşılar)
   // AMA admin etiketlenirse rise komutunda bile çalışmalı
-  const isAdminMention = message.mentions.users?.some(u => 
-    !u.bot && u.id !== message.author.id && u.id !== client.user?.id
+  const isAdminMention = message.mentions.members?.some(m => 
+    !m.user.bot && m.id !== message.author.id && m.id !== client.user?.id
   );
   
   if (isAdminMention) {
@@ -60,29 +60,26 @@ module.exports = async message => {
       const { otomasyonDurum } = require("../komutlar/otomasyon");
       const oto = otomasyonDurum(message.guild.id);
       if (oto && !oto.bitmis) {
-        const etiketlenenler = [...(message.mentions.users?.values() || [])]
-          .filter(u => !u.bot && u.id !== message.author.id && u.id !== client.user?.id)
+        const etiketlenenler = [...(message.mentions.members?.values() || [])]
+          .filter(m => !m.user.bot && m.id !== message.author.id && m.id !== client.user?.id)
           .slice(0, 5); // Max 5 admin
-        for (const u of etiketlenenler) {
-          const uye = await message.guild.members.fetch(u.id).catch(() => null);
-          if (uye) {
-            // Admin kontrolü: Administrator permission VEYA "Admin/Moderator" rolü
-            const adminRolleri = uye.roles.cache.filter(r => 
-              r.permissions.has(PermissionFlagsBits.Administrator) || 
-              /admin|moderator|yönetici|mod/i.test(r.name)
-            );
-            if (adminRolleri.size > 0) {
-              const key = `etiket_${message.guild.id}_${message.author.id}`;
-              const son = etiketCooldown.get(key) || 0;
-              if (Date.now() - son < 60000) break; // 60 sn spam koruması
-              etiketCooldown.set(key, Date.now());
-              
-              const lang = await getLang(message.author.id);
-              const { t } = require("../dil");
-              const metin = t(lang, "otomasyon.etiketKarsilama", { kullanici: `${message.author}` });
-              await message.reply({ content: metin, allowedMentions: { repliedUser: false } }).catch(() => {});
-              break;
-            }
+        for (const uye of etiketlenenler) {
+          // Admin kontrolü: Administrator permission VEYA "Admin/Moderator" rolü
+          const adminRolleri = uye.roles.cache.filter(r => 
+            r.permissions.has(PermissionFlagsBits.Administrator) || 
+            /admin|moderator|yönetici|mod/i.test(r.name)
+          );
+          if (adminRolleri.size > 0) {
+            const key = `etiket_${message.guild.id}_${message.author.id}`;
+            const son = etiketCooldown.get(key) || 0;
+            if (Date.now() - son < 60000) break; // 60 sn spam koruması
+            etiketCooldown.set(key, Date.now());
+            
+            const lang = await getLang(message.author.id);
+            const { t } = require("../dil");
+            const metin = t(lang, "otomasyon.etiketKarsilama", { kullanici: `${message.author}` });
+            await message.reply({ content: metin, allowedMentions: { repliedUser: false } }).catch(() => {});
+            break;
           }
         }
       }
