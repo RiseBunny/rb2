@@ -215,7 +215,7 @@ function createOwnerLogError(params) {
  * @returns {Object} embed ve components
  */
 function createOwnerLogLearn(params) {
-  const { soru, cevap, guild, user, lang = "tr", action = "learned" } = params;
+  const { soru, cevap, guild, user, lang = "tr", action = "learned", cacheId = null } = params;
   const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
   
   const isTr = lang === "tr";
@@ -239,13 +239,14 @@ function createOwnerLogLearn(params) {
     .setFooter({ text: `RiseBunny AI • ${new Date().toLocaleString(lang === "tr" ? "tr-TR" : "en-US")}` })
     .setTimestamp();
 
+  const cid = cacheId || "x";
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId(`owner_ai_save_${Buffer.from(JSON.stringify({soru, cevap})).toString('base64').slice(0, 80)}`)
+      .setCustomId(`owner_ai_save_${cid}`)
       .setLabel(isTr ? "💾 Kaydet" : "💾 Save")
       .setStyle(ButtonStyle.Success),
     new ButtonBuilder()
-      .setCustomId(`owner_ai_delete_${Buffer.from(JSON.stringify({soru})).toString('base64').slice(0, 80)}`)
+      .setCustomId(`owner_ai_delete_${cid}`)
       .setLabel(isTr ? "🗑️ Sil" : "🗑️ Delete")
       .setStyle(ButtonStyle.Danger)
   );
@@ -259,7 +260,7 @@ function createOwnerLogLearn(params) {
  * @returns {Object} embed ve components
  */
 function createOwnerLogNoAnswer(params) {
-  const { soru, guild, user, lang = "tr" } = params;
+  const { soru, guild, user, lang = "tr", cacheId = null } = params;
   const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
   
   const isTr = lang === "tr";
@@ -281,7 +282,7 @@ function createOwnerLogNoAnswer(params) {
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId(`owner_ai_teach_${Buffer.from(JSON.stringify({soru})).toString('base64').slice(0, 80)}`)
+      .setCustomId(`owner_ai_teach_${cacheId || "x"}`)
       .setLabel(isTr ? "🧠 Öğret" : "🧠 Teach")
       .setStyle(ButtonStyle.Primary)
   );

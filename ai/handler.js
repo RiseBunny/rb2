@@ -23,13 +23,11 @@ const matcher = new SoruEslestirici(db);
 const aiCooldown = new Map();
 const COOLDOWN_MS = 3000;
 
-// Groq istekleri için cooldown (kullanıcı başına 10 saniye)
-const groqCooldown = new Map();
-const GROQ_COOLDOWN_MS = 10000;
-
-// Learn butonu için cache (base64 JSON yerine short ID kullan)
+// Learn/owner butonları için cache (base64 JSON yerine short ID)
 const learnCache = new Map();
+const ownerCache = new Map();
 const LEARN_CACHE_TTL = 10 * 60 * 1000; // 10 dakika
+const OWNER_CACHE_TTL = 30 * 60 * 1000; // 30 dakika
 
 const AI_CONFIG = {
   TETIKLEYICI: "rise",
@@ -125,20 +123,28 @@ async function ownerLogAI(client, logData) {
         lang: logData.lang
       });
     } else if (logData.type === "learn") {
+      const oid = `own_${Date.now().toString(36)}_${Math.random().toString(36).substr(2, 6)}`;
+      ownerCache.set(oid, { soru: logData.soru, cevap: logData.cevap });
+      setTimeout(() => ownerCache.delete(oid), 30 * 60 * 1000);
       logResult = createOwnerLogLearn({
         soru: logData.soru,
         cevap: logData.cevap,
         guild: logData.guild,
         user: logData.user,
         lang: logData.lang,
-        action: logData.action
+        action: logData.action,
+        cacheId: oid
       });
     } else if (logData.type === "no_answer") {
+      const nid = `own_${Date.now().toString(36)}_${Math.random().toString(36).substr(2, 6)}`;
+      ownerCache.set(nid, { soru: logData.soru });
+      setTimeout(() => ownerCache.delete(nid), OWNER_CACHE_TTL);
       logResult = createOwnerLogNoAnswer({
         soru: logData.soru,
         guild: logData.guild,
         user: logData.user,
-        lang: logData.lang
+        lang: logData.lang,
+        cacheId: nid
       });
     }
     
@@ -260,13 +266,6 @@ async function aiIsle(message, client) {
   }
   aiCooldown.set(message.author.id, now);
 
-  // 5) Groq cooldown kontrolü (10 sn)
-  const groqSonKullanim = groqCooldown.get(message.author.id) || 0;
-  const groqBekle = groqSonKullanim + 10000 - now;
-  if (groqBekle > 0) {
-    // Groq cooldown'da ama local DB'de arama yapabilir
-  }
-
   // 6) Önce croxydb'de ara (local bilgi tabanı)
   const sonuc = await matcher.bul(soru);
 
@@ -306,18 +305,7 @@ async function aiIsle(message, client) {
     return true;
   }
 
-  // 7) Local DB'de yoksa Groq AI'ye sor
-  const groqCooldownKalan = groqSonKullanim + 10000 - now;
-  if (groqCooldownKalan > 0) {
-    const lang = getLangSync(message.author.id);
-    await message.reply({
-      content: (lang === "tr" ? `⏳ AI şu an meşgul, **${Math.ceil(groqCooldownKalan / 1000)} saniye** sonra tekrar dene.` : `⏳ AI is busy, try again in **${Math.ceil(groqCooldownKalan / 1000)} seconds**.`),
-      allowedMentions: { repliedUser: false }
-    }).catch(() => {});
-    return true;
-  }
-  
-  groqCooldown.set(message.author.id, now);
+  // 7) Local DB'de yoksa sağlayıcı zincirine sor (limit yiyeni atlar)
 
   // Eğitim verilerini Groq'ya göndermek için hazırla
   const egitimVerileri = egitimVerileriniHazirla();
@@ -325,10 +313,11 @@ async function aiIsle(message, client) {
   // "Yazıyor..." etkisi
   await message.channel.sendTyping().catch(() => {});
   
-  // Groq AI'ye sor
-  const { groqSor } = require("./groq");
+  // Çoklu sağlayıcı zincirine sor (rate-limit yiyeni atla, sona gelince başa dön)
+  const { chainAsk } = require("./providers");
+  const { buildSystemPrompt } = require("./groq");
   const lang = getLangSync(message.author.id);
-  const groqSonuc = await groqSor(soru, egitimVerileriniHazirla(), lang);
+  const groqSonuc = await chainAsk(buildSystemPrompt(egitimVerileriniHazirla(), lang), soru, lang);
 
   if (groqSonuc.success) {
     const cevap = groqSonuc.cevap;
@@ -357,9 +346,6 @@ async function aiIsle(message, client) {
       allowedMentions: { repliedUser: false }
     }).catch(() => {});
 
-    // Groq cooldown ayarla
-    groqCooldown.set(message.author.id, Date.now());
-    
     console.log(`🤖 [AI Groq] ${message.author.tag}: "${soru}" → Groq cevapladı`);
     return true;
   }
@@ -433,9 +419,18 @@ async function ownerButonIsle(interaction, client) {
     }
     
     try {
-      const encoded = customId.replace("owner_ai_save_", "");
-      const { soru, cevap } = JSON.parse(Buffer.from(encoded, 'base64').toString());
-      
+      const oid = customId.replace("owner_ai_save_", "");
+      let data = ownerCache.get(oid);
+      if (!data) {
+        try { data = JSON.parse(Buffer.from(oid, 'base64').toString()); } catch {}
+      }
+      if (!data || !data.soru) {
+        const lang0 = getLangSync(interaction.user.id);
+        await interaction.reply({ content: lang0 === "tr" ? "❌ Bu kayıt süresi dolmuş. Lütfen güncel logdan işlem yapın." : "❌ This record expired. Please use the latest log.", ephemeral: true }).catch(() => {});
+        return true;
+      }
+      const { soru, cevap } = data;
+
       const id = `qa_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       db.set(`ai_qa_${id}`, {
         soru: soru,
@@ -478,9 +473,18 @@ async function ownerButonIsle(interaction, client) {
     }
     
     try {
-      const encoded = customId.replace("owner_ai_delete_", "");
-      const { soru } = JSON.parse(Buffer.from(encoded, 'base64').toString());
-      
+      const oid = customId.replace("owner_ai_delete_", "");
+      let data = ownerCache.get(oid);
+      if (!data) {
+        try { data = JSON.parse(Buffer.from(oid, 'base64').toString()); } catch {}
+      }
+      if (!data || !data.soru) {
+        const lang0 = getLangSync(interaction.user.id);
+        await interaction.reply({ content: lang0 === "tr" ? "❌ Bu kayıt süresi dolmuş. Lütfen güncel logdan işlem yapın." : "❌ This record expired. Please use the latest log.", ephemeral: true }).catch(() => {});
+        return true;
+      }
+      const { soru } = data;
+
       // Soruya benzer kayıtları bul ve sil
       const all = db.all() || {};
       let silinen = 0;
@@ -520,11 +524,23 @@ async function ownerButonIsle(interaction, client) {
     
     // Modal açarak sahibin cevap yazmasını sağla
     const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require("discord.js");
-    const encoded = customId.replace("owner_ai_teach_", "");
-    const { soru } = JSON.parse(Buffer.from(encoded, 'base64').toString());
-    
+    const oid = customId.replace("owner_ai_teach_", "");
+    let tdata = ownerCache.get(oid);
+    if (!tdata) {
+      try { tdata = JSON.parse(Buffer.from(oid, 'base64').toString()); } catch {}
+    }
+    if (!tdata || !tdata.soru) {
+      const lang0 = getLangSync(interaction.user.id);
+      await interaction.reply({ content: lang0 === "tr" ? "❌ Bu kayıt süresi dolmuş." : "❌ This record expired.", ephemeral: true }).catch(() => {});
+      return true;
+    }
+    const { soru } = tdata;
+    const mid = `ownm_${Date.now().toString(36)}_${Math.random().toString(36).substr(2, 6)}`;
+    ownerCache.set(mid, { soru });
+    setTimeout(() => ownerCache.delete(mid), OWNER_CACHE_TTL);
+
     const modal = new ModalBuilder()
-      .setCustomId(`owner_ai_teach_modal_${Buffer.from(JSON.stringify({soru})).toString('base64').slice(0, 80)}`)
+      .setCustomId(`owner_ai_teach_modal_${mid}`)
       .setTitle("🧠 AI'ya Cevap Öğret");
     
     const input = new TextInputBuilder()
@@ -557,8 +573,18 @@ async function ownerModalIsle(interaction, client) {
     }
     
     try {
-      const encoded = customId.replace("owner_ai_teach_modal_", "");
-      const { soru } = JSON.parse(Buffer.from(encoded, 'base64').toString());
+      const mid = customId.replace("owner_ai_teach_modal_", "");
+      let mdata = ownerCache.get(mid);
+      if (!mdata) {
+        try { mdata = JSON.parse(Buffer.from(mid, 'base64').toString()); } catch {}
+      }
+      if (!mdata || !mdata.soru) {
+        const lang0 = getLangSync(interaction.user.id);
+        await interaction.reply({ content: lang0 === "tr" ? "❌ Bu kayıt süresi dolmuş." : "❌ This record expired.", ephemeral: true }).catch(() => {});
+        return true;
+      }
+      const { soru } = mdata;
+      ownerCache.delete(mid);
       const cevap = interaction.fields.getTextInputValue("owner_ai_cevap");
       
       const id = `qa_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
