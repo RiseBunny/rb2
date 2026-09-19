@@ -118,7 +118,7 @@ function dilPaneli(PREFIX, options = {}) {
     );
   }
 
-  // Alt satır: dokümantasyon linkleri + onay butonları
+  // Alt satır: dokümantasyon linkleri
   const { ButtonBuilder: BB, ButtonStyle: BS } = require("discord.js");
   components.push(
     new ARB().addComponents(
@@ -127,12 +127,16 @@ function dilPaneli(PREFIX, options = {}) {
       new BB().setLabel("📜 Terms").setStyle(BS.Link).setURL("https://risebunny.vercel.app/terms.html")
     )
   );
-  components.push(
-    new ARB().addComponents(
-      new BB().setCustomId("onay_evet").setLabel("✅ Kaydet ve Kabul Et / Accept").setStyle(BS.Success),
-      new BB().setCustomId("onay_hayir").setLabel("❌ Onaylamıyorum / Decline").setStyle(BS.Danger)
-    )
-  );
+
+  // Onay butonları SADECE dil seçildiyse göster (userNeedsLang == false)
+  if (!userNeedsLang) {
+    components.push(
+      new ARB().addComponents(
+        new BB().setCustomId("onay_evet").setLabel("✅ Kaydet ve Kabul Et / Accept").setStyle(BS.Success),
+        new BB().setCustomId("onay_hayir").setLabel("❌ Onaylamıyorum / Decline").setStyle(BS.Danger)
+      )
+    );
+  }
 
   return { embeds: [embed], components };
 }
