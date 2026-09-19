@@ -26,7 +26,7 @@ module.exports = async message => {
 
   const prefix = process.env.PREFIX || PREFIX;
 
-  // 👑 Admin etiketleme karşılaması (otomasyon kurulu sunucuda)
+  // 👑 Admin etiketleme karşılama (otomasyon kurulu sunucuda)
   // Komut ve rise mesajlarında tetiklenmez (onları kendi akışları karşılar)
   if (!message.content.startsWith(prefix) && !message.content.toLowerCase().startsWith("rise")) {
     try {
@@ -35,20 +35,27 @@ module.exports = async message => {
       if (oto && !oto.bitmis) {
         const etiketlenenler = [...(message.mentions.users?.values() || [])]
           .filter(u => !u.bot && u.id !== message.author.id && u.id !== client.user?.id)
-          .slice(0, 3);
+          .slice(0, 5); // Max 5 admin
         for (const u of etiketlenenler) {
           const uye = await message.guild.members.fetch(u.id).catch(() => null);
-          if (uye && uye.permissions.has(PermissionFlagsBits.Administrator)) {
-            const key = `etiket_${message.guild.id}_${message.author.id}`;
-            const son = etiketCooldown.get(key) || 0;
-            if (Date.now() - son < 60000) break; // 60 sn spam koruması
-            etiketCooldown.set(key, Date.now());
-            const dilVar = hasLang(message.author.id);
-            const metin = !dilVar
-              ? t("tr", "otomasyon.etiketKarsilama", { kullanici: `${message.author}` }) + "\n\n" + t("en", "otomasyon.etiketKarsilama", { kullanici: `${message.author}` })
-              : t(await getLang(message.author.id), "otomasyon.etiketKarsilama", { kullanici: `${message.author}` });
-            await message.reply({ content: metin, allowedMentions: { repliedUser: false } }).catch(() => {});
-            break;
+          if (uye) {
+            // Admin kontrolü: Administrator permission VEYA "Admin/Moderator" rolü
+            const adminRolleri = uye.roles.cache.filter(r => 
+              r.permissions.has(PermissionFlagsBits.Administrator) || 
+              /admin|moderator|yönetici|mod/i.test(r.name)
+            );
+            if (adminRolleri.size > 0) {
+              const key = `etiket_${message.guild.id}_${message.author.id}`;
+              const son = etiketCooldown.get(key) || 0;
+              if (Date.now() - son < 60000) break; // 60 sn spam koruması
+              etiketCooldown.set(key, Date.now());
+              
+              const lang = await getLang(message.author.id);
+              const { t } = require("../dil");
+              const metin = t(lang, "otomasyon.etiketKarsilama", { kullanici: `${message.author}` });
+              await message.reply({ content: metin, allowedMentions: { repliedUser: false } }).catch(() => {});
+              break;
+            }
           }
         }
       }

@@ -62,7 +62,7 @@ class SoruEslestirici {
   }
 
   /**
-   * Tüm QA çiftlerini croxydb'den getir
+   * Tüm QA çiftlerini croxydb'den ve cevaplar.json'dan getir
    */
   tumVerileriGetir() {
     const now = Date.now();
@@ -74,6 +74,7 @@ class SoruEslestirici {
       const all = this.db.all() || {};
       const veriler = [];
 
+      // 1. Croxydb'den öğrenilen veriler (ai_qa_*)
       for (const [key, value] of Object.entries(all)) {
         if (key.startsWith("ai_qa_") && value && value.soru && value.cevap) {
           veriler.push({
@@ -87,6 +88,32 @@ class SoruEslestirici {
             faydali: value.faydali || 0
           });
         }
+      }
+
+      // 2. cevaplar.json'dan sabit Q&A çiftlerini ekle
+      try {
+        const fs = require("fs");
+        const path = require("path");
+        const cevaplarPath = path.join(__dirname, "..", "cevaplar.json");
+        const cevaplarData = JSON.parse(require("fs").readFileSync(cevaplarPath, "utf8"));
+
+        for (const item of cevaplarData.cevaplar) {
+          const kategori = item.kategori || "genel";
+          for (const soru of item.sorular) {
+            veriler.push({
+              id: `builtin_${soru}`,
+              soru: soru,
+              cevap: item.cevap,
+              kategori: kategori,
+              kaynak: "builtin",
+              kullanici: null,
+              kullanim: 0,
+              faydali: 0
+            });
+          }
+        }
+      } catch (e) {
+        console.warn("[AI] cevaplar.json okunamadı:", e.message);
       }
 
       this.cache.set("all", veriler);
