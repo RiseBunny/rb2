@@ -173,6 +173,7 @@ module.exports = {
     kullanimOgret: "Usage: `r!otomasyon teach question | answer`",
     ikisiGerek: "Both question and answer are required.",
     ogretOk: "✅ Saved! I will now answer \"{soru}\" in this server.",
+    ogretKullanim: "To add training: `r!otomasyon teach question | answer`",
     duraklatildi: "⚠️ The founder's premium expired — otomasyon is **paused** in this server (data kept, not working).",
     ayarBaslik: "⚙️ Otomasyon Settings",
     ayarAciklama: "No-answer channel: {kanal}\nTicket category: {kategori}\n\nTo change, mention channel/category:\n`r!otomasyon settings #no-answer-channel #category`",

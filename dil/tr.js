@@ -173,6 +173,7 @@ module.exports = {
     kullanimOgret: "Kullanım: `r!otomasyon öğret soru | cevap`",
     ikisiGerek: "Soru ve cevap ikisi de gerekli.",
     ogretOk: "✅ Kaydedildi! Artık bu sunucuda \"{soru}\" sorusunu cevaplayacağım.",
+    ogretKullanim: "Eğitim eklemek için: `r!otomasyon öğret soru | cevap`",
     duraklatildi: "⚠️ Kurucunun premiumu bittiği için bu sunucudaki otomasyon **duraklatıldı** (veriler duruyor, çalışmıyor).",
     ayarBaslik: "⚙️ Otomasyon Ayarları",
     ayarAciklama: "No-answer kanalı: {kanal}\nTicket kategorisi: {kategori}\n\nDeğiştirmek için kanalı/kategoriyi etiketleyerek yazın:\n`r!otomasyon ayar #cevapsız-kanal #kategori`",
