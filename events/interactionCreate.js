@@ -697,6 +697,12 @@ module.exports = async (interaction) => {
     return cevapEkleButonIsle(interaction, interaction.client);
   }
 
+  // 🤖 Sunucu onay butonları (oto_onay_ / oto_red_ — o sunucunun adminleri)
+  if (interaction.isButton() && (interaction.customId.startsWith("oto_onay_") || interaction.customId.startsWith("oto_red_"))) {
+    const { otoOnayButonIsle } = require("../ai/handler");
+    return otoOnayButonIsle(interaction, interaction.client);
+  }
+
   // 🤖 Owner AI butonları (kaydet/sil/öğret)
   if (interaction.isButton()) {
     const { ownerButonIsle } = require("../ai/handler");

@@ -127,6 +127,7 @@ const KOMUTLAR = {
   "ticketayarla": { kat: "ticket", en: "ticket-setup", enAlias: ["ticketset"] },
   "engelle": { kat: "moderasyon", en: "block-commands", enAlias: ["block", "komutengelle", "komut-engelle"] },
   "otomasyon": { kat: "yapayzeka", en: "automation", enAlias: ["oto", "otomasyon-ai", "auto"] },
+  "veri": { kat: "sahip", en: "data", enAlias: ["veriler", "datashow"] },
   "tkm": { kat: "eglence", en: "rps", enAlias: ["rockpaperscissors"] },
   "komutlar": { kat: "genel", en: "command-count", enAlias: ["cmdcount"] },
   "unbanall": { kat: "moderasyon", en: "unban-all", enAlias: ["pardonall"] },

@@ -243,11 +243,11 @@ function createOwnerLogLearn(params) {
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`owner_ai_save_${cid}`)
-      .setLabel(isTr ? "💾 Kaydet" : "💾 Save")
+      .setLabel(isTr ? "✅ Kabul Et" : "✅ Accept")
       .setStyle(ButtonStyle.Success),
     new ButtonBuilder()
       .setCustomId(`owner_ai_delete_${cid}`)
-      .setLabel(isTr ? "🗑️ Sil" : "🗑️ Delete")
+      .setLabel(isTr ? "❌ Reddet" : "❌ Reject")
       .setStyle(ButtonStyle.Danger)
   );
 
