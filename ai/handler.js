@@ -184,18 +184,17 @@ async function ogrenenCevapKaydet(interaction, soru, cevap) {
     } catch {}
     
     const lang = getLangSync(interaction.user.id);
-    const isTr = lang === "tr";
-    
+    const { t } = require("../dil");
+
     await interaction.update({
-      content: (isTr ? "✅ **Başarıyla öğrendim!** Bu soru-cevap çifti artık veritabanımda.\n\n" : "✅ **Successfully learned!** This Q&A is now in my database.\n\n") +
-        `**${isTr ? "Soru" : "Question"}:** ${soru}\n**${isTr ? "Cevap" : "Answer"}:** ${cevap}`,
+      content: t(lang, "ai.ogrenildi", { soru, cevap }),
       components: [],
       embeds: []
     }).catch(() => {});
-    
+
     console.log(`🧠 [AI Öğrenme] ${interaction.user.tag}: "${soru}" kaydedildi`);
-    
-    // Owner log'a öğrenme kaydı gönder
+
+    // Owner log'a öğrenme kaydı gönder (sahip: hangi sunucuda kim öğretti)
     await ownerLogAI(interaction.client, {
       type: "learn",
       soru: soru,
@@ -205,11 +204,12 @@ async function ogrenenCevapKaydet(interaction, soru, cevap) {
       lang: lang,
       action: "learned"
     });
-    
+
   } catch (e) {
     console.error("[AI Öğrenme Hatası]:", e);
     const lang = getLangSync(interaction.user.id);
-    await interaction.reply({ content: lang === "tr" ? "❌ Kaydetme sırasında hata oluştu." : "❌ An error occurred while saving.", ephemeral: true }).catch(() => {});
+    const { t } = require("../dil");
+    await interaction.reply({ content: t(lang, "ai.kaydetHata"), ephemeral: true }).catch(() => {});
   }
 }
 
@@ -305,6 +305,37 @@ async function aiIsle(message, client) {
     return true;
   }
 
+  // 6b) Sunucuya özel otomasyon eğitimi (rise ile entegre, %50+ benzerlik)
+  // Premium biterse: veriler DURUR, çalışma durur + sahip log + kanal bildirimi
+  if (message.guild) {
+    try {
+      const { otomasyonDurum } = require("../komutlar/otomasyon");
+      const { t } = require("../dil");
+      const oto = otomasyonDurum(message.guild.id);
+      if (oto && oto.bitmis) {
+        const l0 = getLangSync(message.author.id);
+        await message.channel.send(t(l0, "otomasyon.duraklatildi")).catch(() => {});
+        try { const { ownerLog } = require("../utils"); ownerLog(client, `🤖 **Otomasyon duraklatıldı (premium bitti, veriler duruyor):** **${message.guild.name}** (${message.guild.id}) — kuran: <@${oto.kuran}>`).catch(() => {}); } catch {}
+      } else if (oto) {
+        const { similarity } = require("./matcher");
+        const all = db.all() || {};
+        let enIyi = null, enSkor = 0;
+        for (const [k, v] of Object.entries(all)) {
+          if (!k.startsWith(`otoegitim_${message.guild.id}_`) || !v?.soru || !v?.cevap) continue;
+          const s = similarity(soru, v.soru);
+          if (s > enSkor) { enSkor = s; enIyi = v; }
+        }
+        if (enIyi && enSkor >= 0.5) {
+          let cevap = matcher.degiskenleriDoldur ? matcher.degiskenleriDoldur(enIyi.cevap, message, client) : enIyi.cevap;
+          await message.channel.sendTyping().catch(() => {});
+          await message.reply({ content: `🏠 ${cevap}`, allowedMentions: { repliedUser: false } }).catch(() => {});
+          console.log(`🤖 [AI Otomasyon] ${message.author.tag}: "${soru}" → sunucu eğitimi (skor: ${enSkor.toFixed(2)})`);
+          return true;
+        }
+      }
+    } catch {}
+  }
+
   // 7) Local DB'de yoksa sağlayıcı zincirine sor (limit yiyeni atlar)
 
   // Eğitim verilerini Groq'ya göndermek için hazırla
@@ -321,23 +352,24 @@ async function aiIsle(message, client) {
 
   if (groqSonuc.success) {
     const cevap = groqSonuc.cevap;
-    
-    // Learn butonu için short ID oluştur (base64 JSON yerine short ID)
+    const { t } = require("../dil");
+
+    // Öğret + Ticket butonları (short ID, çevirili)
     const learnId = `learn_${Date.now().toString(36)}_${Math.random().toString(36).substr(2, 6)}`;
     learnCache.set(learnId, { soru, cevap });
     setTimeout(() => learnCache.delete(learnId), LEARN_CACHE_TTL);
-    
-    // Buton etiketi kullanıcının diline göre
-    const lang = getLangSync(message.author.id);
-    const isTr = lang === "tr";
-    
-    // "RiseBunny'ye öğret" butonu oluştur
+
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId(`ai_learn_${learnId}`)
-        .setLabel(isTr ? "🧠 RiseBunny'ye öğret" : "🧠 Teach RiseBunny")
+        .setLabel(t(lang, "ai.ogretButon"))
         .setStyle(ButtonStyle.Success)
-        .setEmoji("🧠")
+        .setEmoji("🧠"),
+      new ButtonBuilder()
+        .setCustomId(`ai_ticket_${learnId}`)
+        .setLabel(t(lang, "ai.ticketButon"))
+        .setStyle(ButtonStyle.Primary)
+        .setEmoji("🎫")
     );
 
     await message.reply({
@@ -346,62 +378,218 @@ async function aiIsle(message, client) {
       allowedMentions: { repliedUser: false }
     }).catch(() => {});
 
-    console.log(`🤖 [AI Groq] ${message.author.tag}: "${soru}" → Groq cevapladı`);
+    console.log(`🤖 [AI Groq] ${message.author.tag}: "${soru}" → Groq cevapladı (${groqSonuc.provider || "?"})`);
     return true;
   }
 
-  // 8) Groq da cevap veremezse - hata mesajı + owner log
+  // 8) Cevap bulunamadı: cevapsız kanalına gönder + hata mesajı + owner log
+  const { t } = require("../dil");
   const hataMesaji = groqSonuc.error || (lang === "tr" ? "Anlamadım, bir hata oldu. Başka bir şekilde sorabilir misin?" : "I didn't understand, an error occurred. Can you rephrase?");
-  
+
   await message.reply({
     content: hataMesaji,
     allowedMentions: { repliedUser: false }
   }).catch(() => {});
 
   console.log(`❌ [AI Hata] ${message.author.tag}: "${soru}" → ${groqSonuc.error}`);
-  
-  // Owner log'a hata gönder
-  await ownerLogAI(client, {
-    type: "error",
-    soru: soru,
-    hata: groqSonuc.error || "Groq yanıt veremedi",
-    guild: message.guild,
-    user: message.author,
-    lang: lang
-  });
-  
+
+  // Cevapsız sorular kanalına gönder (otomasyon aktifse)
+  await cevapsizKanalaGonder(client, message, soru, lang);
+
+  // Owner log: sadece GERÇEK hatalarda (rate-limit/yoğunluk mesajlarında atma)
+  if (groqSonuc.statusCode !== 429) {
+    await ownerLogAI(client, {
+      type: "error",
+      soru: soru,
+      hata: groqSonuc.error || "AI yanıt veremedi",
+      guild: message.guild,
+      user: message.author,
+      lang: lang
+    });
+  }
+
   return true;
 }
 
 /**
- * "Öğren" butonu interaction handler
+ * Cevapsız soruyu sunucunun no-answer kanalına gönder + "Cevap Ekle" butonu (30sn yanıt penceresi)
+ */
+async function cevapsizKanalaGonder(client, message, soru, lang) {
+  try {
+    if (!message.guild) return;
+    const cfg = db.fetch(`otomasyon_${message.guild.id}`);
+    if (!cfg?.aktif || !cfg.noAnswerKanal) return;
+    // Premium bitmişse duraklatılmış sayılır — kanal bildirimi yapma
+    try {
+      const { otomasyonDurum } = require("../komutlar/otomasyon");
+      const d = otomasyonDurum(message.guild.id);
+      if (!d || d.bitmis) return;
+    } catch {}
+    const kanal = message.guild.channels.cache.get(cfg.noAnswerKanal);
+    if (!kanal?.isTextBased()) return;
+    const { t } = require("../dil");
+    const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
+    const cid = `cevapsiz_${Date.now().toString(36)}_${Math.random().toString(36).substr(2, 6)}`;
+    learnCache.set(cid, { soru, soran: message.author.id, kanal: message.channel.id });
+    setTimeout(() => learnCache.delete(cid), 60 * 1000);
+    const e = new EmbedBuilder().setColor("Orange")
+      .setTitle(t(lang, "ai.cevapsizBaslik"))
+      .setDescription(t(lang, "ai.cevapsizAciklama", { kullanici: `${message.author}`, soru: soru.slice(0, 1500) }))
+      .setFooter({ text: `RiseBunny • ${message.guild.name}` })
+      .setTimestamp();
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`ai_cevapekle_${cid}`).setLabel(t(lang, "ai.cevapEkleButon")).setStyle(ButtonStyle.Primary).setEmoji("✏️")
+    );
+    await kanal.send({ embeds: [e], components: [row] }).catch(() => {});
+  } catch {}
+}
+
+/**
+ * "RiseBunny'ye öğret" butonu interaction handler (çevirili, local'e kaydeder)
  */
 async function learnButonIsle(interaction, client) {
   const customId = interaction.customId;
   if (!customId.startsWith("ai_learn_")) return false;
+  const { t } = require("../dil");
 
   try {
     const learnId = customId.replace("ai_learn_", "");
     const data = learnCache.get(learnId);
-    
+
     if (!data) {
       const lang = getLangSync(interaction.user.id);
-      await interaction.reply({ 
-        content: lang === "tr" ? "❌ Bu öğretme isteğinin süresi doldu. Lütfen tekrar deneyin." : "❌ This teach request has expired. Please try again.", 
-        ephemeral: true 
-      }).catch(() => {});
+      await interaction.reply({ content: t(lang, "ai.sureDoldu"), ephemeral: true }).catch(() => {});
       return true;
     }
-    
+
     const { soru, cevap } = data;
     learnCache.delete(learnId); // Tek kullanımlık
-    
+
     await ogrenenCevapKaydet(interaction, soru, cevap);
     return true;
   } catch (e) {
     console.error("[AI Learn Button Error]:", e);
     const lang = getLangSync(interaction.user.id);
-    await interaction.reply({ content: lang === "tr" ? "❌ İşlem sırasında hata oluştu." : "❌ An error occurred during the operation.", ephemeral: true }).catch(() => {});
+    await interaction.reply({ content: t(lang, "ai.islemHata"), ephemeral: true }).catch(() => {});
+    return true;
+  }
+}
+
+/**
+ * "Ticket Aç" butonu — sebep sorar (modal), sonra ayarlanan kategoriye ticket açar
+ */
+async function ticketButonIsle(interaction, client) {
+  const customId = interaction.customId;
+  if (!customId.startsWith("ai_ticket_")) return false;
+  const { t } = require("../dil");
+  try {
+    const learnId = customId.replace("ai_ticket_", "");
+    const data = learnCache.get(learnId);
+    if (!data) {
+      const lang = getLangSync(interaction.user.id);
+      await interaction.reply({ content: t(lang, "ai.sureDoldu"), ephemeral: true }).catch(() => {});
+      return true;
+    }
+    const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require("discord.js");
+    const modal = new ModalBuilder()
+      .setCustomId(`ai_ticketsebep_${learnId}`)
+      .setTitle("🎫 Ticket");
+    const input = new TextInputBuilder()
+      .setCustomId("sebep")
+      .setLabel("Sebep / Reason")
+      .setStyle(TextInputStyle.Paragraph)
+      .setRequired(true)
+      .setMaxLength(500);
+    modal.addComponents(new ActionRowBuilder().addComponents(input));
+    await interaction.showModal(modal).catch(() => {});
+    return true;
+  } catch (e) {
+    console.error("[AI Ticket Button Error]:", e);
+    const lang = getLangSync(interaction.user.id);
+    await interaction.reply({ content: t(lang, "ai.islemHata"), ephemeral: true }).catch(() => {});
+    return true;
+  }
+}
+
+/**
+ * Ticket sebep modalı — ayarlanan kategoriye ticket açar
+ */
+async function ticketSebepModalIsle(interaction, client) {
+  if (!interaction.isModalSubmit() || !interaction.customId.startsWith("ai_ticketsebep_")) return false;
+  const { t, getLang } = require("../dil");
+  try {
+    const learnId = interaction.customId.replace("ai_ticketsebep_", "");
+    const data = learnCache.get(learnId);
+    if (!data) {
+      const lang = await getLang(interaction.user.id);
+      await interaction.reply({ content: t(lang, "ai.sureDoldu"), ephemeral: true }).catch(() => {});
+      return true;
+    }
+    const sebep = (interaction.fields.getTextInputValue("sebep") || "").slice(0, 500) || data.soru;
+    const { acBilet } = require("../komutlar/ticket");
+    const lang = await getLang(interaction.user.id);
+    const guild = interaction.guild;
+    if (!guild) {
+      await interaction.reply({ content: t(lang, "ortak.hata"), ephemeral: true }).catch(() => {});
+      return true;
+    }
+    await interaction.deferReply({ ephemeral: true }).catch(() => {});
+    // Otomasyon ticket kategorisi öncelikli, yoksa ticket.js varsayılanı
+    let katId = null;
+    try {
+      const cfg = db.fetch(`otomasyon_${guild.id}`);
+      if (cfg?.ticketKategori) katId = cfg.ticketKategori;
+    } catch {}
+    const kanal = await acBilet(client, guild, interaction.user, `${sebep} (rise: ${data.soru.slice(0, 40)})`.slice(0, 200), lang, null, katId);
+    if (kanal) return interaction.editReply({ content: `🎫 ${kanal}` }).catch(() => {});
+    return interaction.editReply({ content: t(lang, "ortak.hata") }).catch(() => {});
+  } catch (e) {
+    console.error("[AI Ticket Modal Error]:", e);
+    return true;
+  }
+}
+
+/**
+ * "Cevap Ekle" butonu — 30sn içinde cevap yazmasını ister, sonra sunucu eğitimine kaydeder
+ */
+async function cevapEkleButonIsle(interaction, client) {
+  if (!interaction.isButton() || !interaction.customId.startsWith("ai_cevapekle_")) return false;
+  const { t, getLang } = require("../dil");
+  try {
+    const cid = interaction.customId.replace("ai_cevapekle_", "");
+    const data = learnCache.get(cid);
+    const lang = await getLang(interaction.user.id);
+    if (!data) {
+      await interaction.reply({ content: t(lang, "ai.cevapEkleSure"), ephemeral: true }).catch(() => {});
+      return true;
+    }
+    await interaction.reply({ content: t(lang, "ai.cevapEkleAciklama", { soru: data.soru.slice(0, 1000) }), ephemeral: true }).catch(() => {});
+    const filter = m => m.author.id === interaction.user.id;
+    const collector = interaction.channel.createMessageCollector({ filter, time: 30000, max: 1 });
+    collector.on("collect", async m => {
+      try {
+        const cevap = m.content.trim().slice(0, 2000);
+        if (!cevap) return;
+        const gid = interaction.guild?.id;
+        if (gid) {
+          const id = `oto_${Date.now().toString(36)}_${Math.random().toString(36).substr(2, 6)}`;
+          db.set(`otoegitim_${gid}_${id}`, { soru: data.soru, cevap, ekleyen: interaction.user.id, tarih: Date.now() });
+          try { matcher.cacheTemizle(); } catch {}
+          try { const { ownerLog } = require("../utils"); ownerLog(client, `✏️ **Cevapsız soru cevaplandı** (<@${interaction.user.id}> ${interaction.user.tag}) — **${interaction.guild?.name}** (${gid})\n❓ ${data.soru.slice(0, 300)}\n💡 ${cevap.slice(0, 500)}`).catch(() => {}); } catch {}
+        }
+        learnCache.delete(cid);
+        await interaction.followUp({ content: t(lang, "ai.cevapEkleOk"), ephemeral: true }).catch(() => {});
+        try { await m.delete().catch(() => {}); } catch {}
+      } catch {}
+    });
+    collector.on("end", async (_c, reason) => {
+      if (reason === "time") {
+        await interaction.followUp({ content: t(lang, "ai.cevapEkleSure"), ephemeral: true }).catch(() => {});
+      }
+    });
+    return true;
+  } catch (e) {
+    console.error("[AI CevapEkle Error]:", e);
     return true;
   }
 }
@@ -412,12 +600,14 @@ async function learnButonIsle(interaction, client) {
 async function ownerButonIsle(interaction, client) {
   const customId = interaction.customId;
   
-  // Owner AI kaydet butonu
+  // Owner AI kaydet butonu (çevirili)
   if (customId.startsWith("owner_ai_save_")) {
+    const { t } = require("../dil");
     if (interaction.user.id !== OWNER_ID) {
-      return interaction.reply({ content: "❌ Bu butonu sadece sahibim kullanabilir.", ephemeral: true }).catch(() => {});
+      const lang = getLangSync(interaction.user.id);
+      return interaction.reply({ content: t(lang, "ai.sadeceSahip"), ephemeral: true }).catch(() => {});
     }
-    
+
     try {
       const oid = customId.replace("owner_ai_save_", "");
       let data = ownerCache.get(oid);
@@ -426,7 +616,7 @@ async function ownerButonIsle(interaction, client) {
       }
       if (!data || !data.soru) {
         const lang0 = getLangSync(interaction.user.id);
-        await interaction.reply({ content: lang0 === "tr" ? "❌ Bu kayıt süresi dolmuş. Lütfen güncel logdan işlem yapın." : "❌ This record expired. Please use the latest log.", ephemeral: true }).catch(() => {});
+        await interaction.reply({ content: t(lang0, "ai.kayitSureDoldu"), ephemeral: true }).catch(() => {});
         return true;
       }
       const { soru, cevap } = data;
@@ -442,36 +632,36 @@ async function ownerButonIsle(interaction, client) {
         faydali: 0,
         created_at: Date.now()
       });
-      
+
       try { matcher.cacheTemizle(); } catch {}
-      
+
       const lang = getLangSync(interaction.user.id);
-      const isTr = lang === "tr";
-      
+
       await interaction.update({
-        content: (isTr ? `✅ **Sahip onayıyla kaydedildi!** Bu soru-cevap artık veritabanında.\n\n` : `✅ **Saved with owner approval!** This Q&A is now in the database.\n\n`) +
-          `**${isTr ? "Soru" : "Question"}:** ${soru}\n**${isTr ? "Cevap" : "Answer"}:** ${cevap}`,
+        content: t(lang, "ai.sahipKaydetti", { soru, cevap }),
         components: [],
         embeds: []
       }).catch(() => {});
-      
+
       console.log(`👑 [Owner AI Save] ${interaction.user.tag}: "${soru}" kaydedildi`);
-      
+
     } catch (e) {
       console.error("[Owner AI Save Error]:", e);
       const lang = getLangSync(interaction.user.id);
-      await interaction.reply({ content: lang === "tr" ? "❌ Kaydetme sırasında hata oluştu." : "❌ An error occurred while saving.", ephemeral: true }).catch(() => {});
+      const { t } = require("../dil");
+      await interaction.reply({ content: t(lang, "ai.kaydetHata"), ephemeral: true }).catch(() => {});
     }
     return true;
   }
-  
-  // Owner AI sil butonu
+
+  // Owner AI sil butonu (çevirili)
   if (customId.startsWith("owner_ai_delete_")) {
+    const { t } = require("../dil");
     if (interaction.user.id !== OWNER_ID) {
       const lang = getLangSync(interaction.user.id);
-      return interaction.reply({ content: lang === "tr" ? "❌ Bu butonu sadece sahibim kullanabilir." : "❌ Only my owner can use this button.", ephemeral: true }).catch(() => {});
+      return interaction.reply({ content: t(lang, "ai.sadeceSahip"), ephemeral: true }).catch(() => {});
     }
-    
+
     try {
       const oid = customId.replace("owner_ai_delete_", "");
       let data = ownerCache.get(oid);
@@ -480,7 +670,7 @@ async function ownerButonIsle(interaction, client) {
       }
       if (!data || !data.soru) {
         const lang0 = getLangSync(interaction.user.id);
-        await interaction.reply({ content: lang0 === "tr" ? "❌ Bu kayıt süresi dolmuş. Lütfen güncel logdan işlem yapın." : "❌ This record expired. Please use the latest log.", ephemeral: true }).catch(() => {});
+        await interaction.reply({ content: t(lang0, "ai.kayitSureDoldu"), ephemeral: true }).catch(() => {});
         return true;
       }
       const { soru } = data;
@@ -496,32 +686,35 @@ async function ownerButonIsle(interaction, client) {
       }
       
       try { matcher.cacheTemizle(); } catch {}
-      
+
       const lang = getLangSync(interaction.user.id);
-      const isTr = lang === "tr";
-      
+      const { t } = require("../dil");
+
       await interaction.update({
-        content: (isTr ? `🗑️ **Silindi!** "${soru}" ile ilgili ${silinen} kayıt veritabanından kaldırıldı.` : `🗑️ **Deleted!** Removed ${silinen} records related to "${soru}".`),
+        content: t(lang, "ai.silindi", { soru, sayi: silinen }),
         components: [],
         embeds: []
       }).catch(() => {});
-      
+
       console.log(`🗑️ [Owner AI Delete] ${interaction.user.tag}: "${soru}" silindi (${silinen} kayıt)`);
-      
+
     } catch (e) {
       console.error("[Owner AI Delete Error]:", e);
       const lang = getLangSync(interaction.user.id);
-      await interaction.reply({ content: lang === "tr" ? "❌ Silme sırasında hata oluştu." : "❌ An error occurred while deleting.", ephemeral: true }).catch(() => {});
+      const { t } = require("../dil");
+      await interaction.reply({ content: t(lang, "ai.silHata"), ephemeral: true }).catch(() => {});
     }
     return true;
   }
-  
-  // Owner AI öğret butonu (cevap veremediğinde)
+
+  // Owner AI öğret butonu (cevap veremediğinde, çevirili)
   if (customId.startsWith("owner_ai_teach_")) {
+    const { t } = require("../dil");
     if (interaction.user.id !== OWNER_ID) {
-      return interaction.reply({ content: "❌ Bu butonu sadece sahibim kullanabilir.", ephemeral: true }).catch(() => {});
+      const lang = getLangSync(interaction.user.id);
+      return interaction.reply({ content: t(lang, "ai.sadeceSahip"), ephemeral: true }).catch(() => {});
     }
-    
+
     // Modal açarak sahibin cevap yazmasını sağla
     const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require("discord.js");
     const oid = customId.replace("owner_ai_teach_", "");
@@ -531,7 +724,7 @@ async function ownerButonIsle(interaction, client) {
     }
     if (!tdata || !tdata.soru) {
       const lang0 = getLangSync(interaction.user.id);
-      await interaction.reply({ content: lang0 === "tr" ? "❌ Bu kayıt süresi dolmuş." : "❌ This record expired.", ephemeral: true }).catch(() => {});
+      await interaction.reply({ content: t(lang0, "ai.kayitSureDoldu"), ephemeral: true }).catch(() => {});
       return true;
     }
     const { soru } = tdata;
@@ -568,10 +761,12 @@ async function ownerModalIsle(interaction, client) {
   const customId = interaction.customId;
   
   if (customId.startsWith("owner_ai_teach_modal_")) {
+    const { t } = require("../dil");
     if (interaction.user.id !== OWNER_ID) {
-      return interaction.reply({ content: "❌ Bu işlemi sadece sahibim yapabilir.", ephemeral: true }).catch(() => {});
+      const lang = getLangSync(interaction.user.id);
+      return interaction.reply({ content: t(lang, "ai.sadeceSahip"), ephemeral: true }).catch(() => {});
     }
-    
+
     try {
       const mid = customId.replace("owner_ai_teach_modal_", "");
       let mdata = ownerCache.get(mid);
@@ -580,13 +775,13 @@ async function ownerModalIsle(interaction, client) {
       }
       if (!mdata || !mdata.soru) {
         const lang0 = getLangSync(interaction.user.id);
-        await interaction.reply({ content: lang0 === "tr" ? "❌ Bu kayıt süresi dolmuş." : "❌ This record expired.", ephemeral: true }).catch(() => {});
+        await interaction.reply({ content: t(lang0, "ai.kayitSureDoldu"), ephemeral: true }).catch(() => {});
         return true;
       }
       const { soru } = mdata;
       ownerCache.delete(mid);
       const cevap = interaction.fields.getTextInputValue("owner_ai_cevap");
-      
+
       const id = `qa_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       db.set(`ai_qa_${id}`, {
         soru: soru,
@@ -598,18 +793,16 @@ async function ownerModalIsle(interaction, client) {
         faydali: 0,
         created_at: Date.now()
       });
-      
+
       try { matcher.cacheTemizle(); } catch {}
-      
+
       const lang = getLangSync(interaction.user.id);
-      const isTr = lang === "tr";
-      
+
       await interaction.reply({
-        content: (isTr ? `✅ **Sahip tarafından öğretildi!** Bu soru-cevap artık veritabanında.\n\n` : `✅ **Taught by owner!** This Q&A is now in the database.\n\n`) +
-          `**${isTr ? "Soru" : "Question"}:** ${soru}\n**${isTr ? "Cevap" : "Answer"}:** ${cevap}`,
+        content: t(lang, "ai.sahipKaydetti", { soru, cevap }),
         ephemeral: true
       }).catch(() => {});
-      
+
       // Owner log
       await ownerLogAI(client, {
         type: "learn",
@@ -620,17 +813,18 @@ async function ownerModalIsle(interaction, client) {
         lang: lang,
         action: "owner_taught"
       });
-      
+
       console.log(`👑 [Owner AI Teach] ${interaction.user.tag}: "${soru}" öğretildi`);
-      
+
     } catch (e) {
       console.error("[Owner AI Teach Modal Error]:", e);
       const lang = getLangSync(interaction.user.id);
-      await interaction.reply({ content: lang === "tr" ? "❌ Öğretme sırasında hata oluştu." : "❌ An error occurred while teaching.", ephemeral: true }).catch(() => {});
+      const { t } = require("../dil");
+      await interaction.reply({ content: t(lang, "ai.ogretHata"), ephemeral: true }).catch(() => {});
     }
     return true;
   }
-  
+
   return false;
 }
 
@@ -688,6 +882,9 @@ function cacheTemizle() {
 module.exports = {
   aiIsle,
   learnButonIsle,
+  ticketButonIsle,
+  ticketSebepModalIsle,
+  cevapEkleButonIsle,
   ownerButonIsle,
   ownerModalIsle,
   cacheTemizle,

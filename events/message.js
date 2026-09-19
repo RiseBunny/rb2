@@ -29,7 +29,7 @@ module.exports = async message => {
   const params = parts.slice(1);
   const perms = typeof client.elevation === "function" ? client.elevation(message) : 0;
 
-  // 🚫 Komut engeli kontrolü (engelle komutu adminler için her zaman açık)
+  // 🚫 Komut engeli kontrolü (çevirili, 20sn sonra silinir)
   const engel = db.fetch(`engel_${message.guild.id}`);
   const isEngelleCmd = ["engelle", "block", "komutengelle", "komut-engelle"].includes(command);
   const isAdminUser = message.member.permissions.has(PermissionFlagsBits.Administrator);
@@ -37,12 +37,10 @@ module.exports = async message => {
     const aktif = engel.kapsam === "sunucu" || (engel.kapsam === "kanal" && engel.kanalId === message.channel.id);
     if (aktif) {
       const ulang = await getLang(message.author.id);
-      const EN = ulang === "en";
+      const kapsam = engel.kapsam === "sunucu" ? t(ulang, "engelle.engelliKapsamSunucu") : t(ulang, "engelle.engelliKapsamKanal");
       const e = new EmbedBuilder().setColor("Red")
-        .setTitle(EN ? "🚫 Commands Blocked" : "🚫 Komutlar Engelli")
-        .setDescription(EN
-          ? `${message.author}, commands are **disabled** ${engel.kapsam === "sunucu" ? "across this server" : "in this channel"} by <@${engel.engelleyen}>.\n⚠️ This message will be deleted in **20 seconds**.`
-          : `${message.author}, komutlar ${engel.kapsam === "sunucu" ? "bu sunucuda" : "bu kanalda"} <@${engel.engelleyen}> tarafından **engellendiği** için çalışmıyor.\n⚠️ Bu mesaj **20 saniye** sonra silinecek.`);
+        .setTitle(t(ulang, "engelle.engelliBaslik"))
+        .setDescription(t(ulang, "engelle.engelliAciklama", { kullanici: `${message.author}`, kapsam, engelleyen: `<@${engel.engelleyen}>` }));
       const m = await message.reply({ embeds: [e], allowedMentions: { repliedUser: false } }).catch(() => null);
       setTimeout(() => { try { m?.delete().catch(() => {}); } catch {} }, 20000);
       return;

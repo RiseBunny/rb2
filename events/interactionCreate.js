@@ -269,33 +269,28 @@ module.exports = async (interaction) => {
         }
       }
 
-      // --- Engelle kapsam seçimi (sadece komutu yazan admin) ---
+      // --- Engelle kapsam seçimi (çevirili) ---
       if (id.startsWith("engel_sunucu_") || id.startsWith("engel_kanal_")) {
-        const { getLangSync } = require("../dil");
+        const { getLangSync, t } = require("../dil");
         const parts = id.split("_");
         const gid = parts[2];
-        if (interaction.user.id !== interaction.message?.interaction?.user?.id) {
-          // Butona basan, komutu yazan olmalı (yoksa sessizce reddet)
-        }
         const guild = interaction.guild;
         if (!guild || guild.id !== gid) {
-          return interaction.reply({ content: "Hata oluştu.", ephemeral: true }).catch(() => {});
+          const l0 = getLangSync(interaction.user.id);
+          return interaction.reply({ content: t(l0, "ortak.hata"), ephemeral: true }).catch(() => {});
         }
         if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
           const l0 = getLangSync(interaction.user.id);
-          return interaction.reply({ content: l0 === "en" ? "Administrator required." : "Yönetici yetkisi gerekli.", ephemeral: true }).catch(() => {});
+          return interaction.reply({ content: t(l0, "ortak.yoneticiGerek"), ephemeral: true }).catch(() => {});
         }
         const isServer = id.startsWith("engel_sunucu_");
         const kanalId = isServer ? null : parts[3];
         const ulang = getLangSync(interaction.user.id);
-        const EN = ulang === "en";
         db.set(`engel_${gid}`, { kapsam: isServer ? "sunucu" : "kanal", kanalId, engelleyen: interaction.user.id, ulang, tarih: Date.now() });
         const e = new EmbedBuilder().setColor("Red")
-          .setTitle(EN ? "🚫 Commands Blocked" : "🚫 Komutlar Engellendi")
-          .setDescription(isServer
-            ? (EN ? "Commands are now **blocked across the server**.\nDisable: `r!engelle kapat`" : "Komutlar **tüm sunucuda engellendi**.\nKapatmak için: `r!engelle kapat`")
-            : (EN ? "Commands are now **blocked in this channel**.\nDisable: `r!engelle kapat`" : "Komutlar **bu kanalda engellendi**.\nKapatmak için: `r!engelle kapat`"));
-        try { const { ownerLog } = require("../utils"); ownerLog(interaction.client, `🚫 **Engel açıldı:** ${guild.name} (${gid}) — ${isServer ? "sunucu" : "kanal " + kanalId} — ${interaction.user.tag}`).catch(() => {}); } catch {}
+          .setTitle(t(ulang, "engelle.baslik"))
+          .setDescription(isServer ? t(ulang, "engelle.acildiSunucu") : t(ulang, "engelle.acildiKanal"));
+        try { const { ownerLog } = require("../utils"); ownerLog(interaction.client, `🚫 **Engel açıldı:** **${guild.name}** (${gid}) — ${isServer ? "sunucu" : "kanal " + kanalId} — ${interaction.user.tag}`).catch(() => {}); } catch {}
         return interaction.update({ embeds: [e], components: [] }).catch(() => {});
       }
 
@@ -684,15 +679,22 @@ module.exports = async (interaction) => {
       }
     }
 
-// 🤖 AI "Öğren" butonu handler
-  if (interaction.isButton() && interaction.customId.startsWith("ai_learn_")) {
-    const { learnButonIsle } = require("../ai/handler");
-    return learnButonIsle(interaction, interaction.client);
+// 🤖 AI öğret + ticket butonları
+  if (interaction.isButton() && (interaction.customId.startsWith("ai_learn_") || interaction.customId.startsWith("ai_ticket_"))) {
+    const { learnButonIsle, ticketButonIsle } = require("../ai/handler");
+    if (interaction.customId.startsWith("ai_learn_")) return learnButonIsle(interaction, interaction.client);
+    return ticketButonIsle(interaction, interaction.client);
   }
 
   // 🤖 AI hata logundaki "Anlaşıldı" butonu
   if (interaction.isButton() && interaction.customId === "ai_error_dismiss") {
     return interaction.update({ content: "✅ Kapatıldı.", embeds: [], components: [] }).catch(() => {});
+  }
+
+  // 🤖 Cevapsız soruya "Cevap Ekle" butonu (30sn)
+  if (interaction.isButton() && interaction.customId.startsWith("ai_cevapekle_")) {
+    const { cevapEkleButonIsle } = require("../ai/handler");
+    return cevapEkleButonIsle(interaction, interaction.client);
   }
 
   // 🤖 Owner AI butonları (kaydet/sil/öğret)
@@ -712,7 +714,14 @@ module.exports = async (interaction) => {
       if (kanal) return interaction.editReply({ content: `Biletin açıldı: ${kanal}` }).catch(() => {});
       return interaction.editReply({ content: t(lang, "ortak.hata") }).catch(() => {});
     }
-  
+
+  // AI ticket sebep modalı (ayarlanan kategoriye ticket)
+  if (interaction.isModalSubmit() && interaction.customId.startsWith("ai_ticketsebep_")) {
+    const { ticketSebepModalIsle } = require("../ai/handler");
+    const handled = await ticketSebepModalIsle(interaction, interaction.client);
+    if (handled) return;
+  }
+
   // Owner AI öğret modal handler
   if (interaction.isModalSubmit()) {
     const { ownerModalIsle } = require("../ai/handler");

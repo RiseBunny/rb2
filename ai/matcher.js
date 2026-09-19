@@ -180,4 +180,7 @@ class SoruEslestirici {
   }
 }
 
+SoruEslestirici.similarity = similarity;
 module.exports = SoruEslestirici;
+module.exports.SoruEslestirici = SoruEslestirici;
+module.exports.similarity = similarity;
