@@ -1,13 +1,13 @@
 /**
  * Multi-Provider AI Chain (round-robin fallback)
- * Sıra: Groq → NVIDIA NIM (iç cascade) → Gemini → Cerebras → OpenRouter
- * Rate-limit (429) yiyeni atla, sonrakine geç. Hepsi patlarsa en başa dön.
+ * Sıra: Groq → NVIDIA NIM → Gemini → Cerebras → OpenRouter → Custom AI (Render)
+ * Rate-limit (429) veya hata durumunda bir sonrakine geçer.
  */
 const fetch = require("node-fetch");
 
-// Sadece test edilmiş ve çalışan modeller
+// Tested and working models
 const NVIDIA_MODELS = [
-  "openai/gpt-oss-20b"                   // ✅ Çalışıyor
+  "openai/gpt-oss-20b"
 ];
 
 const OPENROUTER_MODELS = [
@@ -29,25 +29,22 @@ const PROVIDERS = [
   { name: "gemini", key: "GEMINI_API_KEY", url: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent", type: "gemini", fallbackUrl: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent" },
   { name: "cerebras", key: "CEREBRAS_API_KEY", url: "https://api.cerebras.ai/v1/chat/completions", model: "qwen-3.8-27b", type: "openai" },
   { name: "openrouter", key: "OPENROUTER_API_KEY", url: "https://openrouter.ai/api/v1/chat/completions", models: OPENROUTER_MODELS, modelIndex: 0, type: "openai" },
-  { name: "custom", key: "CUSTOM_AI_API_KEY", url: "https://apiai-kfal.onrender.com/chat", model: "custom", type: "custom", header: "x-api-key" },
+  { name: "custom", key: "CUSTOM_AI_API_KEY", url: "https://apiai-kfal.onrender.com/chat", type: "custom" },
 ];
 
-// Round-robin başlangıç indeksi (global, sona gelince başa döner)
 let startIndex = 0;
 
 async function callOpenAI(p, systemPrompt, soru, apiKey) {
-  // System prompt çok uzunsa kısalt (Groq token limiti 8000 TPM için)
-  // Yaklaşık 1 token = 4 karakter, max 6000 token = ~24000 karakter
-  // Ama güvenli olması için 4000 token = ~16000 karakter
   const maxSystemChars = 12000;
   let finalSystemPrompt = systemPrompt;
   if (systemPrompt.length > maxSystemChars) {
     finalSystemPrompt = systemPrompt.slice(0, maxSystemChars) + "\n\n[Not: Sistem promptu kısaltıldı]";
   }
   
-  const headers = p.header === "x-api-key"
-    ? { "Content-Type": "application/json", "x-api-key": apiKey }
-    : { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` };
+  const headers = {
+    "Content-Type": "application/json",
+    "Authorization": `Bearer ${apiKey}`
+  };
   
   const res = await fetch(p.url, {
     method: "POST",
@@ -55,15 +52,44 @@ async function callOpenAI(p, systemPrompt, soru, apiKey) {
     body: JSON.stringify({
       model: p.model,
       messages: [{ role: "system", content: finalSystemPrompt }, { role: "user", content: soru }],
-      max_tokens: 300, temperature: 0.7, top_p: 0.9
+      max_tokens: 300,
+      temperature: 0.7,
+      top_p: 0.9
     }),
     timeout: 15000
   });
+  
   const data = await res.json().catch(() => ({}));
   if (!res.ok) return { ok: false, status: res.status, error: data.error?.message || `HTTP ${res.status}` };
   const cevap = data.choices?.[0]?.message?.content?.trim();
   if (!cevap) return { ok: false, status: 500, error: "empty" };
   return { ok: true, cevap };
+}
+
+async function callCustom(p, systemPrompt, soru, apiKey) {
+  try {
+    const res = await fetch(p.url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey
+      },
+      body: JSON.stringify({
+        prompt: `${systemPrompt ? systemPrompt + "\n\n" : ""}${soru}`,
+        messages: [{ role: "user", content: soru }]
+      }),
+      timeout: 45000
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { ok: false, status: res.status, error: data.error || `HTTP ${res.status}` };
+    
+    const cevap = data.response || data.choices?.[0]?.message?.content?.trim();
+    if (!cevap) return { ok: false, status: 500, error: "empty" };
+    return { ok: true, cevap };
+  } catch (err) {
+    return { ok: false, status: 504, error: err.message };
+  }
 }
 
 async function callGeminiOnce(url, systemPrompt, soru, apiKey) {
@@ -91,10 +117,6 @@ async function callGemini(p, systemPrompt, soru, apiKey) {
   return callGeminiOnce(p.fallbackUrl, systemPrompt, soru, apiKey);
 }
 
-/**
- * NVIDIA iç cascade: free modelleri sırayla dene,
- * 429/404/hata alana kadar ilerle, tur bitince başa dön.
- */
 async function callNvidia(p, systemPrompt, soru, apiKey) {
   const models = p.models || [];
   let lastErr = "no-model", lastStatus = 0;
@@ -124,7 +146,6 @@ async function callNvidia(p, systemPrompt, soru, apiKey) {
         console.warn(`[AI:nvidia] ${model} → boş cevap, sıradakine geçiliyor...`);
         continue;
       }
-      // Başarılı: bir sonraki çağrı sıradaki modelden başlasın (başa dönmeli tur)
       p.modelIndex = (models.indexOf(model) + 1) % models.length;
       console.log(`[AI:nvidia] Başarılı: ${model}`);
       return { ok: true, cevap, model };
@@ -139,36 +160,37 @@ async function callNvidia(p, systemPrompt, soru, apiKey) {
 
 /**
  * Zincir: rate-limit yiyeni atla, sonrakine geç. Tur sonu başa dön.
- * @returns {Promise<{success, cevap?, provider?, error?, statusCode?}>}
  */
 async function chainAsk(systemPrompt, soru, lang = "tr") {
   const isTr = lang !== "en";
-  // Sıralı dene: startIndex'ten başla, tümünü bir tur dene
   const order = PROVIDERS.map((_, i) => PROVIDERS[(startIndex + i) % PROVIDERS.length]);
   let lastErr = null, lastStatus = 0, tried = [];
 
   for (const p of order) {
     const key = process.env[p.key];
-    if (!key) continue; // API key yoksa atla
+    if (!key) continue;
     tried.push(p.name);
     try {
-      const r = p.type === "gemini"
-        ? await callGemini(p, systemPrompt, soru, key)
-        : (p.type === "custom"
-            ? await callOpenAI(p, systemPrompt, soru, key)
-            : (p.models
-              ? await callNvidia(p, systemPrompt, soru, key)
-              : await callOpenAI(p, systemPrompt, soru, key)));
+      let r;
+      if (p.type === "gemini") {
+        r = await callGemini(p, systemPrompt, soru, key);
+      } else if (p.type === "custom") {
+        r = await callCustom(p, systemPrompt, soru, key);
+      } else if (p.models) {
+        r = await callNvidia(p, systemPrompt, soru, key);
+      } else {
+        r = await callOpenAI(p, systemPrompt, soru, key);
+      }
+
       if (r.ok) {
-        // Bir sonrakini öne al (round-robin ilerle)
         startIndex = (PROVIDERS.indexOf(p) + 1) % PROVIDERS.length;
         return { success: true, cevap: r.cevap, provider: p.name + (r.model ? `/${r.model}` : "") };
       }
       lastErr = r.error; lastStatus = r.status;
       console.warn(`[AI:${p.name}] hata ${r.status}: ${r.error}`);
-      if (r.status === 429) continue; // rate-limit → sonrakine geç
-      if (r.status >= 500) continue;  // sunucu hatası → sonrakine geç
-      continue; // diğer hatalarda da sonrakini dene
+      if (r.status === 429) continue;
+      if (r.status >= 500) continue;
+      continue;
     } catch (e) {
       lastErr = e.message; lastStatus = 0;
       console.warn(`[AI:${p.name}] istek hatası:`, e.message);
@@ -176,7 +198,6 @@ async function chainAsk(systemPrompt, soru, lang = "tr") {
     }
   }
 
-  // Hepsi denendi, hiçbiri çalışmadı → başa dön (sonraki çağrı en baştan dener)
   startIndex = 0;
   const msg = !tried.length
     ? (isTr ? "AI servisleri yapılandırılmamış (API key yok)." : "AI services not configured (no API key).")
