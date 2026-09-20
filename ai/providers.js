@@ -29,7 +29,7 @@ const PROVIDERS = [
   { name: "gemini", key: "GEMINI_API_KEY", url: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent", type: "gemini", fallbackUrl: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent" },
   { name: "cerebras", key: "CEREBRAS_API_KEY", url: "https://api.cerebras.ai/v1/chat/completions", model: "qwen-3.8-27b", type: "openai" },
   { name: "openrouter", key: "OPENROUTER_API_KEY", url: "https://openrouter.ai/api/v1/chat/completions", models: OPENROUTER_MODELS, modelIndex: 0, type: "openai" },
-  { name: "custom", key: "CUSTOM_AI_API_KEY", url: "https://apiai-kfal.onrender.com/chat", model: "custom", type: "openai" },
+  { name: "custom", key: "CUSTOM_AI_API_KEY", url: "https://apiai-kfal.onrender.com/chat", model: "custom", type: "custom", header: "x-api-key" },
 ];
 
 // Round-robin başlangıç indeksi (global, sona gelince başa döner)
@@ -45,9 +45,13 @@ async function callOpenAI(p, systemPrompt, soru, apiKey) {
     finalSystemPrompt = systemPrompt.slice(0, maxSystemChars) + "\n\n[Not: Sistem promptu kısaltıldı]";
   }
   
+  const headers = p.header === "x-api-key"
+    ? { "Content-Type": "application/json", "x-api-key": apiKey }
+    : { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` };
+  
   const res = await fetch(p.url, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+    headers,
     body: JSON.stringify({
       model: p.model,
       messages: [{ role: "system", content: finalSystemPrompt }, { role: "user", content: soru }],
@@ -150,9 +154,11 @@ async function chainAsk(systemPrompt, soru, lang = "tr") {
     try {
       const r = p.type === "gemini"
         ? await callGemini(p, systemPrompt, soru, key)
-        : (p.models
-          ? await callNvidia(p, systemPrompt, soru, key)
-          : await callOpenAI(p, systemPrompt, soru, key));
+        : (p.type === "custom"
+            ? await callOpenAI(p, systemPrompt, soru, key)
+            : (p.models
+              ? await callNvidia(p, systemPrompt, soru, key)
+              : await callOpenAI(p, systemPrompt, soru, key)));
       if (r.ok) {
         // Bir sonrakini öne al (round-robin ilerle)
         startIndex = (PROVIDERS.indexOf(p) + 1) % PROVIDERS.length;

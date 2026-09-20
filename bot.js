@@ -112,7 +112,8 @@ const client = new Discord.Client({
     Discord.GatewayIntentBits.GuildModeration,
     Discord.GatewayIntentBits.DirectMessages
   ],
-  partials: [Discord.Partials.Channel, Discord.Partials.Message, Discord.Partials.Reaction]
+  partials: [Discord.Partials.Channel, Discord.Partials.Message, Discord.Partials.Reaction],
+  allowedMentions: { parse: ["users", "roles"], repliedUser: true }
 });
 for (const _m of ["once", "on"]) {
   try {
