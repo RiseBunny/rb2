@@ -108,8 +108,8 @@ exports.run = async (client, message) => {
     .setColor("#3f007f")
     .setTitle(metin(lang, "🏗️ Sunucu Kurulsun mu?", "🏗️ Set Up The Server?"))
     .setDescription(metin(lang,
-      `**${S.roller.length} rol** + **${S.kategoriler.length} kategori** + **${S.kanallar.length} kanal** kurulacak.\nYetkiler ve kanal izinleri otomatik ayarlanacak, bot sistemleri (kayıt/ticket/log) DB'ye bağlanacak.\n\nDevam edilsin mi?`,
-      `**${S.roller.length} roles** + **${S.kategoriler.length} categories** + **${S.kanallar.length} channels** will be created.\nRole permissions and channel overwrites will be set automatically, bot systems (register/ticket/log) will be linked to the DB.\n\nContinue?`))
+      `⚠️ **DİKKAT: Mevcut TÜM roller ve kanallar SİLİNİP sıfırdan kurulacak!** (komutun yazıldığı kanal + botun kendi rolleri hariç)\n\n**${S.roller.length} rol** + **${S.kategoriler.length} kategori** + **${S.kanallar.length} kanal** kurulacak.\nYetkiler ve kanal izinleri otomatik ayarlanacak, bot sistemleri (kayıt/ticket/log) DB'ye bağlanacak.\n\nDevam edilsin mi?`,
+      `⚠️ **WARNING: ALL existing roles and channels will be DELETED and rebuilt!** (except this channel + the bot's own roles)\n\n**${S.roller.length} roles** + **${S.kategoriler.length} categories** + **${S.kanallar.length} channels** will be created.\nRole permissions and channel overwrites will be set automatically, bot systems (register/ticket/log) will be linked to the DB.\n\nContinue?`))
     .setFooter({ text: metin(lang, 'Onaylıyorsan "evet" yaz (30 sn)', 'Type "yes" to confirm (30 sec)') });
   await message.channel.send({ embeds: [sor] });
 
@@ -124,16 +124,35 @@ exports.run = async (client, message) => {
   }
   if (!collected || collected.size === 0) return;
 
-  const durumMsg = await message.channel.send(metin(lang, "⏳ Roller oluşturuluyor...", "⏳ Creating roles..."));
+  const sebep = lang === "en" ? "Server setup (rebuild)" : "Sunucu kurulumu (sıfırdan)";
+  const durumMsg = await message.channel.send(metin(lang, "🧹 Eski roller ve kanallar siliniyor...", "🧹 Deleting old roles and channels..."));
 
-  /* ── 1. ROLLER ── */
+  /* ── 0. TEMİZLİK: eski her şeyi sil, yenisi kurulsun ── */
+  const silinen = { rol: 0, kanal: 0 };
+  const komutKanalId = message.channel.id;
+  // Kanallar (komutun yazıldığı kanal hariç — durum güncellemesi için gerekli)
+  for (const ch of [...message.guild.channels.cache.values()]) {
+    if (ch.id === komutKanalId) continue;
+    try { await ch.delete(sebep); silinen.kanal++; } catch {}
+  }
+  // Roller (everyone + yönetilen + bottan yüksek + botun kendi rolleri hariç)
+  const botEnYuksek = me.roles.highest;
+  for (const rol of [...message.guild.roles.cache.values()]) {
+    if (rol.id === message.guild.id) continue; // @everyone
+    if (rol.managed) continue;                 // bot/entegrasyon rolleri
+    if (rol.position >= botEnYuksek.position) continue; // erişilemez
+    if (me.roles.cache.has(rol.id)) continue;  // botun kendi rolleri
+    try { await rol.delete(sebep); silinen.rol++; } catch {}
+  }
+
+  await durumMsg.edit(metin(lang, "⏳ Roller oluşturuluyor...", "⏳ Creating roles...")).catch(() => {});
+
+  /* ── 1. ROLLER (sıfırdan — isim çakışması olamaz) ── */
   const rolMap = new Map(); // key -> Role (ID hatasını önler: isimle arama YOK)
   const rolSonuc = { basarili: [], basarisiz: [] };
   for (const r of S.roller) {
     try {
-      // Aynı isimde rol varsa tekrar oluşturma, mevcutu kullan (spam önleme)
-      const mevcut = message.guild.roles.cache.find(x => x.name === r.ad);
-      const rol = mevcut || await message.guild.roles.create({
+      const rol = await message.guild.roles.create({
         name: r.ad, color: r.renk, permissions: r.yetkiler, reason: r.neden, mentionable: false,
       });
       rolMap.set(r.key, rol);
@@ -179,11 +198,10 @@ exports.run = async (client, message) => {
     return yetki;
   }
 
-  // Önce kategoriler
+  // Önce kategoriler (temizlikten sonra — her zaman sıfırdan)
   for (const katAd of S.kategoriler) {
     try {
-      const mevcut = message.guild.channels.cache.find(c => c.name === katAd && c.type === ChannelType.GuildCategory);
-      const kat = mevcut || await message.guild.channels.create({ name: katAd, type: ChannelType.GuildCategory });
+      const kat = await message.guild.channels.create({ name: katAd, type: ChannelType.GuildCategory, reason: sebep });
       katMap.set(katAd, kat.id);
     } catch {}
   }
@@ -279,10 +297,12 @@ exports.run = async (client, message) => {
     .setColor("Green")
     .setTitle(metin(lang, "✅ Sunucu Kuruldu!", "✅ Server Set Up!"))
     .setDescription(metin(lang,
+      `**🧹 Silinen:** ${silinen.rol} rol, ${silinen.kanal} kanal\n` +
       `**Roller:** ${rolSonuc.basarili.length}/${S.roller.length} ✅${rolSonuc.basarisiz.length ? `\n❌ Başarısız: ${rolSonuc.basarisiz.join(", ")}` : ""}\n` +
       `**Kanallar:** ${kanalSonuc.basarili.length}/${S.kanallar.length} ✅${kanalSonuc.basarisiz.length ? `\n❌ Başarısız: ${kanalSonuc.basarisiz.join(", ")}` : ""}\n\n` +
       `**🔗 Otomatik bağlantılar:**\n${entegrasyon.length ? entegrasyon.map(e => `• ${e}`).join("\n") : "—"}\n\n` +
       `🔒 Sadece-okunur kanallar: herkes görür, sadece Yönetici yazar.\n👁️ Log kanalları: sadece Yönetici + Moderatör görür.\n💤 AFK: herkes girer, kimse konuşamaz.\n🔇 Susturulmuş: hiçbir kanalda yazamaz/konuşamaz.`,
+      `**🧹 Deleted:** ${silinen.rol} roles, ${silinen.kanal} channels\n` +
       `**Roles:** ${rolSonuc.basarili.length}/${S.roller.length} ✅${rolSonuc.basarisiz.length ? `\n❌ Failed: ${rolSonuc.basarisiz.join(", ")}` : ""}\n` +
       `**Channels:** ${kanalSonuc.basarili.length}/${S.kanallar.length} ✅${kanalSonuc.basarisiz.length ? `\n❌ Failed: ${kanalSonuc.basarisiz.join(", ")}` : ""}\n\n` +
       `**🔗 Auto-linked:**\n${entegrasyon.length ? entegrasyon.map(e => `• ${e}`).join("\n") : "—"}\n\n` +
