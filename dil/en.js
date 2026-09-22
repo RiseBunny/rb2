@@ -387,6 +387,8 @@ module.exports = {
     "spam-kapat": { aciklama: "Disables spam protection.", kullanim: "spam-off" },
     "spamkoruma": { aciklama: "Toggles spam protection.", kullanim: "spam-filter" },
     "sunucukur": { aciklama: "Sets up the server.", kullanim: "setup-server" },
+    "betatester": { aciklama: "Adds/removes/lists beta testers. (Owner only)", kullanim: "beta-tester add @user" },
+    "mod": { aciklama: "Adds/removes/lists mods. (Owner only)", kullanim: "moderator-add add @user" },
     "sunuculara": { aciklama: "Shows the bot invite link.", kullanim: "invite-bot" },
     "sürelirol": { aciklama: "Gives a temporary role.", kullanim: "temp-role @user @role <time>" },
     "sürem": { aciklama: "Shows your VIP time left.", kullanim: "my-time" },

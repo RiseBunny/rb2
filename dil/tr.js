@@ -356,6 +356,8 @@ module.exports = {
     "spam-kapat": { aciklama: "Spam korumayı kapatır.", kullanim: "spam-kapat" },
     "spamkoruma": { aciklama: "Spam korumayı açar/kapatır.", kullanim: "spamkoruma" },
     "sunucukur": { aciklama: "Sunucuyu kurar.", kullanim: "sunucukur" },
+    "betatester": { aciklama: "Beta tester ekler/siler/listeler. (Sadece sahip)", kullanim: "betatester ekle @kullanıcı" },
+    "mod": { aciklama: "Mod ekler/siler/listeler. (Sadece sahip)", kullanim: "mod ekle @kullanıcı" },
     "sunuculara": { aciklama: "Bot davet linkini gösterir.", kullanim: "sunuculara" },
     "sürelirol": { aciklama: "Süreli rol verir.", kullanim: "sürelirol @kullanıcı @rol <süre>" },
     "sürem": { aciklama: "VIP süreni gösterir.", kullanim: "sürem" },

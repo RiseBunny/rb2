@@ -162,8 +162,16 @@ module.exports = async message => {
     return yetkiHata(t(lang, "ortak.yetki", { yetki: "Üyeleri Yasakla" }));
   if (cmd.conf.permLevel === 4 && !message.member.permissions.has(PermissionFlagsBits.Administrator))
     return yetkiHata(t(lang, "ortak.yetki", { yetki: "Yönetici" }));
-  if (cmd.conf.permLevel === 5 && message.author.id !== SAHIP_ID)
-    return yetkiHata(t(lang, "ortak.sahipSadece"));
+  if (cmd.conf.permLevel === 5 && message.author.id !== SAHIP_ID) {
+    // Mod muafiyeti: karaliste/beyazliste/kupon/bakım modlara açık
+    try {
+      const { modMuafKomut, isMod } = require("../ai/executor");
+      if (!(modMuafKomut(cmd.help.name) && isMod(message.author.id)))
+        return yetkiHata(t(lang, "ortak.sahipSadece"));
+    } catch {
+      return yetkiHata(t(lang, "ortak.sahipSadece"));
+    }
+  }
 
   /* Buraya takılan komut eskiden hiçbir cevap vermeden susuyordu
      (sahip bile r!presil çalıştıramıyordu). Artık sebep bildirilir. */

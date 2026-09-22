@@ -438,6 +438,23 @@ async function aiIsle(message, client) {
   gunlukVeri.count++;
   db.set(gunlukKey, gunlukVeri);
 
+  // 0) AI ile komut çalıştırma (beta-tester + premium kapılı, yetki süzgeçli)
+  // Eylem kelimesi varsa yerel KB atlanır, doğrudan tool yoluna gidilir.
+  try {
+    const { isAction, aiKomutCalistir } = require("./executor");
+    if (isAction(soru)) {
+      const sonuc = await aiKomutCalistir(client, message, soru);
+      if (sonuc && sonuc.eleAlindi) {
+        if (sonuc.cevap) await yerelCevapGonder(message, client, sonuc.cevap, "");
+        console.log(`🤖 [AI Exec] ${message.author.tag}: "${soru}" → ${String(sonuc.cevap || "").slice(0, 80)}`);
+        return true;
+      }
+      // eleAlindi=false → eyleme benzemiyor, normal akışa devam et
+    }
+  } catch (e) {
+    console.warn("[AI Exec] hata:", e.message);
+  }
+
   // 1) Global local bilgi tabanı (cevaplar.json + ai_qa_)
   const sonuc = await matcher.bul(soru);
 

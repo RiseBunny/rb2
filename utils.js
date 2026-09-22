@@ -540,11 +540,17 @@ async function checkAndGiveLevelRole(client, userId) {
   }
 }
 
-/* ── Bot tarafı Firestore silme ────────────────────────────────────────────
+/* ── Bot tarafı Firestore işlemleri ────────────────────────────────────────
    Veri silme talebi sahip tarafından KABUL edildiğinde kullanıcının forum
-   içeriklerini (konu/yanıt/bildirim/hesap) bot hesabıyla siler. Bot hesabı
-   yetkili değilse (rules yayınlanmamış) sessizce başarısız olur ve çağıran
-   taraf kullanıcıyı siteye yönlendirir. */
+   içeriklerini (konu/yanıt/bildirim/hesap) bot hesabıyla siler. Ayrıca
+   siterol komutu site rollerini (users.role) bot hesabıyla günceller.
+   Bot hesabı yetkili değilse (rules yayınlanmamış veya .env'de
+   FIREBASE_BOT_EMAIL/SIFRE yoksa) sessizce başarısız olur.
+   GEREKLİ RULES (Firestore → Rules → Publish):
+     match /users/{doc} {
+       allow update: if isBot()
+         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role']);
+     } */
 const FB_PROJE = "gen-lang-client-0590499912";
 const FB_ANAHTAR = process.env.FIREBASE_API_KEY || "AIzaSyAq5Nafl9aI2TabzGsj5J9ij6lNwyfTguM";
 const SILINECEK_KOLEKSIYONLAR = [
@@ -633,6 +639,64 @@ async function firestoreSil(uid, ekstra = []) {
   return cikti;
 }
 
+/** Discord ID'den site (Firestore users) uid'sini bulur. */
+async function siteUidBul(discordId) {
+  const tok = await _silTokenAl();
+  if (!tok) return null;
+  try {
+    const r = await fetch(
+      `https://firestore.googleapis.com/v1/projects/${FB_PROJE}/databases/(default)/documents:runQuery?key=${FB_ANAHTAR}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + tok },
+        body: JSON.stringify({
+          structuredQuery: {
+            from: [{ collectionId: "users" }],
+            where: { fieldFilter: { field: { fieldPath: "discordId" }, op: "EQUAL", value: { stringValue: String(discordId) } } },
+            limit: 2,
+          },
+        }),
+      }
+    );
+    if (!r.ok) return null;
+    const j = await r.json().catch(() => []);
+    const ad = Array.isArray(j) ? (j[0]?.document?.name || null) : null;
+    if (!ad) return null;
+    const uid = ad.split("/").pop();
+    const rol = j[0]?.document?.fields?.role?.stringValue || null;
+    const kad = j[0]?.document?.fields?.username?.stringValue || null;
+    return { uid, rol, kullaniciAdi: kad };
+  } catch { return null; }
+}
+
+const SITE_ROLLERI = ["member", "vip", "developer", "moderator", "kurucu"];
+
+/** Site rolünü günceller (sadece role alanı patch'lenir). */
+async function siteRolVer(discordId, rol) {
+  const cikti = { ok: false, neden: null };
+  if (!SITE_ROLLERI.includes(rol)) { cikti.neden = "gecersiz-rol"; return cikti; }
+  const kayit = await siteUidBul(discordId);
+  if (!kayit) { cikti.neden = "hesap-yok"; return cikti; } // siteye Discord ile giriş yapmamış
+  const tok = await _silTokenAl();
+  if (!tok) { cikti.neden = "bot-giris-yok"; return cikti; }
+  try {
+    const r = await fetch(
+      `https://firestore.googleapis.com/v1/projects/${FB_PROJE}/databases/(default)/documents/users/${kayit.uid}?updateMask.fieldPaths=role&key=${FB_ANAHTAR}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + tok },
+        body: JSON.stringify({ fields: { role: { stringValue: rol } } }),
+      }
+    );
+    if (!r.ok) { cikti.neden = "rules"; return cikti; } // rules yayınlanmamış
+    cikti.ok = true;
+    cikti.uid = kayit.uid;
+    cikti.onceki = kayit.rol;
+    cikti.kullaniciAdi = kayit.kullaniciAdi;
+    return cikti;
+  } catch { cikti.neden = "hata"; return cikti; }
+}
+
 module.exports = {
   db,
   firestoreSil,
@@ -662,6 +726,9 @@ module.exports = {
   startKuponSweeper,
   migrateKuponFlags,
   getKupon,
+  siteUidBul,
+  siteRolVer,
+  SITE_ROLLERI,
   startHatirlatSweeper,
   parseSure,
   xpSeviye,

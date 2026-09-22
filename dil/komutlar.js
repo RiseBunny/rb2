@@ -122,6 +122,8 @@ const KOMUTLAR = {
   "spam-kapat": { kat: "koruma", en: "spam-off", enAlias: ["antispam-off"] },
   "spamkoruma": { kat: "koruma", en: "spam-filter", enAlias: ["antispam"] },
   "sunucukur": { kat: "moderasyon", en: "setup-server", enAlias: ["setup"] },
+  "betatester": { kat: "sahip", en: "beta-tester", enAlias: ["betatest"] },
+  "mod": { kat: "sahip", en: "moderator-add", enAlias: ["moderator"] },
   "sunuculara": { kat: "genel", en: "invite-bot", enAlias: ["addbot"] },
   "sürelirol": { kat: "genel", en: "temp-role", enAlias: ["timerole"] },
   "sürem": { kat: "ekonomi", en: "my-time", enAlias: ["mytime"] },
