@@ -1,5 +1,5 @@
 const { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, PermissionFlagsBits } = require("discord.js");
-const { diller, GECERLI, setLang, setGuildLang, getGuildLang, getLang, t } = require("../dil");
+const { diller, GECERLI, setLang, setGuildLang, getGuildLang, getLang, hasLang, hasConsent, t } = require("../dil");
 
 function dilSecenekleri() {
   return GECERLI.map(k => ({ label: diller[k].isim, value: k, description: `Bot dilini ${diller[k].isim} yap` }));
@@ -46,10 +46,15 @@ exports.run = async (client, message, args) => {
     new BB2().setLabel("🔒 Privacy").setStyle(BS2.Link).setURL("https://risebunny.vercel.app/privacy.html"),
     new BB2().setLabel("📜 Terms").setStyle(BS2.Link).setURL("https://risebunny.vercel.app/terms.html")
   );
+  // Dili seçili + onayı vermiş kullanıcıya tekrar sorulmaz: sadece dil değiştirme menüleri
   const rowOnay = new ActionRowBuilder().addComponents(
     new BB2().setCustomId("onay_evet").setLabel("✅ Kaydet ve Kabul Et / Accept").setStyle(BS2.Success),
     new BB2().setCustomId("onay_hayir").setLabel("❌ Onaylamıyorum / Decline").setStyle(BS2.Danger)
   );
+  const components = [rowKullanici, rowSunucu, rowDocs];
+  if (!hasConsent(message.author.id)) {
+    components.push(rowOnay);
+  }
   const embed = new EmbedBuilder()
     .setColor("#36393F")
     .setTitle("🌍 Dil / Language")
@@ -58,7 +63,7 @@ exports.run = async (client, message, args) => {
       `**🏠 ${t(sl, "ortak.sunucuDilBaslik")} / Server Language**\n` +
       `Mevcut / Current: **${slAd}**\nKullanım / Usage: \`r!dil sunucu tr\` (Sunucuyu Yönet yetkisi gerekir / Manage Server required)`
     );
-  await message.reply({ embeds: [embed], components: [rowKullanici, rowSunucu, rowDocs, rowOnay] });
+  await message.reply({ embeds: [embed], components });
 };
 
 /** Dil secmemis kullaniciya gonderilen panel (message.js ilk-komut akisi kullanir). */
