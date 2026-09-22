@@ -271,6 +271,7 @@ module.exports = {
     site: "Website link",
     sahip: "Owner commands",
     seviye: "Level system",
+    yardim: "Help menus",
   },
   komutlar: {
     "abone": { aciklama: "Gives the subscriber role.", kullanim: "subscribe @user" },
@@ -402,6 +403,8 @@ module.exports = {
     "unbanall": { aciklama: "Unbans everyone.", kullanim: "unban-all" },
     "uyarı": { aciklama: "Warns a user.", kullanim: "warn @user [reason]" },
     "vip": { aciklama: "Shows your VIP time.", kullanim: "vip" },
+    "rolal": { aciklama: "Claims the VIP role on the target server (level 25+).", kullanim: "claim-role" },
+    "verisil": { aciklama: "Requests deletion of all your bot and site data.", kullanim: "data-delete" },
     "vipsistemler": { aciklama: "Lists VIP systems.", kullanim: "vip-system" },
     "y-kayıt-erkek": { aciklama: "AI male registration setup.", kullanim: "ai-register-male @role" },
     "y-kayıt-kadın": { aciklama: "AI female registration setup.", kullanim: "ai-register-female @role" },
@@ -515,6 +518,8 @@ onay: {
     kabulEt: '✅ Accept',
     reddet: '❌ Decline',
     kabulOk: '✅ Consent accepted! You can now use all commands.',
+    redBilgi: 'Your consent is required to use commands. Press Save & Accept in the language menu.',
+    redKilit: 'No consent - commands stay locked. Until you accept, I will show this approval window on every command attempt. (r!dil)',
     reddetMesaj: '❌ Terms of Service not accepted. You cannot use commands.\nYou can retry anytime by typing `r!dil`.',
     gerekli: '⚠️ You must accept the **Terms of Service** before using RiseBunny. Run `r!dil` and press Accept to consent.\n\nPlease press the **\"Accept\"** button below to consent.\n\n💡 **Continue from Where You Left Off**: Pick up where you left off, just keep typing `rise <question>`.',
     onayPanel: '📋 **Terms of Service and Privacy Policy**\n\nBy using RiseBunny, you agree to the following:\n\n1. Your data is processed to improve service quality\n2. Your data is never shared without your consent\n3. **Your data is not shared with 3rd parties**\n4. Spam/harmful content is prohibited\n5. Terms may be updated without notice\n\nPress **Accept** to continue.'

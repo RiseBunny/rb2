@@ -205,6 +205,7 @@ const KATEGORILER = [
   { id: "site", emoji: "🔗", tr: "Site", en: "Website" },
   { id: "sahip", emoji: "👑", tr: "Sahip", en: "Owner" },
   { id: "seviye", emoji: "🏆", tr: "Seviye", en: "Level" },
+  { id: "yardim", emoji: "❓", tr: "Yardım", en: "Help" },
 ];
 
 module.exports = { KOMUTLAR, KATEGORILER };

@@ -174,8 +174,14 @@ module.exports = async message => {
   }
 
   /* Buraya takılan komut eskiden hiçbir cevap vermeden susuyordu
-     (sahip bile r!presil çalıştıramıyordu). Artık sebep bildirilir. */
-  if (perms < cmd.conf.permLevel) return yetkiHata(t(lang, "ortak.yetki", { yetki: "Daha yüksek yetki" }));
+     (sahip bile r!presil çalıştıramıyordu). Artık sebep bildirilir.
+     Mod muafiyeti: karaliste/beyazliste/kupon/bakım için modlarda perms bakılmaz. */
+  let modMuaf = false;
+  try {
+    const { modMuafKomut, isMod } = require("../ai/executor");
+    modMuaf = modMuafKomut(cmd.help.name) && isMod(message.author.id);
+  } catch {}
+  if (!modMuaf && perms < cmd.conf.permLevel) return yetkiHata(t(lang, "ortak.yetki", { yetki: "Daha yüksek yetki" }));
 
   try {
     await cmd.run(client, message, params, perms);

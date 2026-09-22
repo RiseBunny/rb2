@@ -201,8 +201,8 @@ module.exports = async (interaction) => {
               .setTitle(ulang === "en" ? "🎉 Welcome to RiseBunny!" : "🎉 RiseBunny'ye Hoş Geldin!")
               .setDescription(
                 (ulang === "en"
-                  ? `Thanks for accepting! Here is everything in one place:\n📄 **Docs & commands:** https://risebunny.vercel.app/docs.html\n🔒 **Privacy:** https://risebunny.vercel.app/privacy.html\n📜 **Terms:** https://risebunny.vercel.app/terms.html\n\nType \`r!yardım\` anywhere to start!`
-                  : `Onayın için teşekkürler! Her şey tek sayfada:\n📄 **Dökümantasyon & komutlar:** https://risebunny.vercel.app/docs.html\n🔒 **Gizlilik:** https://risebunny.vercel.app/privacy.html\n📜 **Şartlar:** https://risebunny.vercel.app/terms.html\n\nBaşlamak için herhangi bir yerde \`r!yardım\` yaz!`));
+                  ? `Thanks for accepting! Everything in one place:\n📄 **Docs & commands:** https://risebunny.vercel.app/docs.html\n\nType \`r!yardım\` anywhere to start!`
+                  : `Onayın için teşekkürler! Her şey tek sayfada:\n📄 **Dökümantasyon & komutlar:** https://risebunny.vercel.app/docs.html\n\nBaşlamak için herhangi bir yerde \`r!yardım\` yaz!`));
             await interaction.user.send({ embeds: [dmE] }).catch(() => {});
           } catch {}
           return interaction.reply({ content: t(ulang, "onay.kabulOk"), ephemeral: true });
@@ -221,6 +221,16 @@ module.exports = async (interaction) => {
           await interaction.reply({ content: t(ulang, "onay.redBilgi"), ephemeral: true }).catch(() => {});
         }
         return undefined;
+      }
+
+      // --- Bilgi sistemi: veri silme talebi kısayolu ---
+      if (id === "bilgi_verisil") {
+        const { getLangSync } = require("../dil");
+        const EN = getLangSync(interaction.user.id) === "en";
+        return interaction.reply({
+          content: EN ? "To request deletion of your data, type `r!verisil` in any server channel." : "Verilerinin silinmesini talep etmek için herhangi bir sunucu kanalına `r!verisil` yaz.",
+          ephemeral: true,
+        }).catch(() => {});
       }
 
       // --- Veri silme talebi butonları (sahip onayı + kullanıcı son onayı) ---
