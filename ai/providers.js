@@ -1,30 +1,33 @@
 /**
  * Multi-Provider AI Chain (round-robin fallback)
- * Sıra: Groq → NVIDIA NIM → Gemini → Cerebras → OpenRouter → Custom AI (Render)
+ * Sıra: Groq → NVIDIA NIM → Gemini → Cerebras → OpenRouter
  */
 const fetch = require("node-fetch");
 
-// NVIDIA NIM Güncel Modeller
+// NVIDIA NIM modeller
 const NVIDIA_MODELS = [
-  "meta/llama-3.1-70b-instruct",
-  "nvidia/nemotron-4-340b-instruct"
+  "openai/gpt-oss-120b",
+  "meta/llama-3.1-70b-instruct"
 ];
 
-// OpenRouter Güncel 2026 Çalışan Ücretsiz (:free) Modeller
+// Gemini modeller (sırayla denenir)
+const GEMINI_MODELS = [
+  "gemini-2.5-flash",
+  "gemini-2.0-flash"
+];
+
+// OpenRouter modeller
 const OPENROUTER_MODELS = [
-  "meta-llama/llama-3.3-70b-instruct:free",
-  "deepseek/deepseek-r1-distill-llama-70b:free",
-  "qwen/qwen-2.5-72b-instruct:free",
-  "google/gemma-2-9b-it:free"
+  "openai/gpt-oss-120b",
+  "meta-llama/llama-3.3-70b-instruct:free"
 ];
 
 const PROVIDERS = [
-  { name: "groq", key: "GROQ_API_KEY", url: "https://api.groq.com/openai/v1/chat/completions", model: "llama-3.1-8b-instant", type: "openai" },
+  { name: "groq", key: "GROQ_API_KEY", url: "https://api.groq.com/openai/v1/chat/completions", model: "openai/gpt-oss-120b", type: "openai" },
   { name: "nvidia", key: "NVIDIA_API_KEY", url: "https://integrate.api.nvidia.com/v1/chat/completions", models: NVIDIA_MODELS, modelIndex: 0, type: "openai" },
-  { name: "gemini", key: "GEMINI_API_KEY", url: "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent", type: "gemini" },
-  { name: "cerebras", key: "CEREBRAS_API_KEY", url: "https://api.cerebras.ai/v1/chat/completions", model: "llama3.1-8b", type: "openai" },
+  { name: "gemini", key: "GEMINI_API_KEY", url: "https://generativelanguage.googleapis.com/v1beta/models", models: GEMINI_MODELS, modelIndex: 0, type: "gemini" },
+  { name: "cerebras", key: "CEREBRAS_API_KEY", url: "https://api.cerebras.ai/v1/chat/completions", model: "gpt-oss-120b", type: "openai" },
   { name: "openrouter", key: "OPENROUTER_API_KEY", url: "https://openrouter.ai/api/v1/chat/completions", models: OPENROUTER_MODELS, modelIndex: 0, type: "openai" },
-  { name: "custom", key: "CUSTOM_AI_API_KEY", url: "https://apiai-kfal.onrender.com/chat", type: "custom" },
 ];
 
 let startIndex = 0;
@@ -60,49 +63,47 @@ async function callOpenAI(p, systemPrompt, soru, apiKey) {
   return { ok: true, cevap };
 }
 
-async function callCustom(p, systemPrompt, soru, apiKey) {
-  try {
-    const res = await fetch(p.url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey
-      },
-      body: JSON.stringify({
-        prompt: systemPrompt ? `${systemPrompt}\n\n${soru}` : soru
-      }),
-      timeout: 30000
-    });
-
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) return { ok: false, status: res.status, error: data.error || `HTTP ${res.status}` };
-    
-    const cevap = data.response;
-    if (!cevap) return { ok: false, status: 500, error: "empty" };
-    return { ok: true, cevap };
-  } catch (err) {
-    return { ok: false, status: 504, error: err.message };
-  }
-}
-
 async function callGemini(p, systemPrompt, soru, apiKey) {
-  const url = `${p.url}?key=${apiKey}`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      system_instruction: systemPrompt ? { parts: [{ text: systemPrompt }] } : undefined,
-      contents: [{ parts: [{ text: soru }] }],
-      generationConfig: { maxOutputTokens: 300, temperature: 0.7 }
-    }),
-    timeout: 15000
-  });
-  
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) return { ok: false, status: res.status, error: data.error?.message || `HTTP ${res.status}` };
-  const cevap = data.candidates?.[0]?.content?.parts?.map(x => x.text || "").join("").trim();
-  if (!cevap) return { ok: false, status: 500, error: "empty" };
-  return { ok: true, cevap };
+  const models = p.models || ["gemini-2.5-flash"];
+  let lastErr = "no-model", lastStatus = 0;
+
+  for (let i = 0; i < models.length; i++) {
+    const model = models[(p.modelIndex + i) % models.length];
+    const url = `${p.url}/${model}:generateContent?key=${apiKey}`;
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          system_instruction: systemPrompt ? { parts: [{ text: systemPrompt }] } : undefined,
+          contents: [{ parts: [{ text: soru }] }],
+          generationConfig: { maxOutputTokens: 300, temperature: 0.7 }
+        }),
+        timeout: 15000
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        lastErr = data.error?.message || `HTTP ${res.status}`;
+        lastStatus = res.status;
+        console.warn(`[AI:${p.name}] ${model} → ${res.status}, sıradakine geçiliyor...`);
+        continue;
+      }
+      const cevap = data.candidates?.[0]?.content?.parts?.map(x => x.text || "").join("").trim();
+      if (!cevap) {
+        lastErr = "empty"; lastStatus = 500;
+        console.warn(`[AI:${p.name}] ${model} → boş cevap, sıradakine geçiliyor...`);
+        continue;
+      }
+      p.modelIndex = (models.indexOf(model) + 1) % models.length;
+      return { ok: true, cevap, model };
+    } catch (e) {
+      lastErr = e.message; lastStatus = 0;
+      console.warn(`[AI:${p.name}] ${model} hata verdi, sıradakine geçiliyor...`);
+      continue;
+    }
+  }
+  return { ok: false, status: lastStatus, error: lastErr };
 }
 
 async function callNvidiaOrOpenRouter(p, systemPrompt, soru, apiKey) {
@@ -168,8 +169,6 @@ async function chainAsk(systemPrompt, soru, lang = "tr") {
       let r;
       if (p.type === "gemini") {
         r = await callGemini(p, systemPrompt, soru, key);
-      } else if (p.type === "custom") {
-        r = await callCustom(p, systemPrompt, soru, key);
       } else if (p.models) {
         r = await callNvidiaOrOpenRouter(p, systemPrompt, soru, key);
       } else {

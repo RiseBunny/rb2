@@ -320,7 +320,7 @@ async function groqSor(soru, egitimVerileri = "", lang = "tr") {
         "Authorization": `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        model: "openai/gpt-oss-20b",
+        model: "openai/gpt-oss-120b",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: soru }
