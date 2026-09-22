@@ -57,12 +57,18 @@ function aiKomutListesi(lang) {
     { canonical: "y-koruma", label: EN ? "🛡️ AI Protection" : "🛡️ AI Koruma", desc: EN ? "AI-based server protection" : "Yapay zeka tabanlı koruma" },
     { canonical: "y-otosistem", label: EN ? "⚙️ AI Auto Setup" : "⚙️ AI Otomatik Kurulum", desc: EN ? "Auto-setup AI registration" : "AI kayıt sistemini otomatik kur" }
   ];
-  
-  return aiKomutlar.map(k => {
+
+  const liste = aiKomutlar.map(k => {
     const b = komutBilgi(lang, k.canonical);
     const cmd = b ? komutAdi(lang, k.canonical) : k.canonical;
     return `**${k.label}** — \`${PREFIX}${cmd}\`\n  ${k.desc}`;
   }).join("\n\n");
+
+  // YENİ: doğal dille komut çalıştırma (rise) + beta/mod bilgisi
+  const riseBilgi = EN
+    ? `**✨ Run Commands with AI (NEW!)** — \`rise <request in plain words>\`\n  Ex: \`rise mute @Ahmet 10m spam\`, \`rise how much money do I have\`\n  Permissions are checked, owner commands excluded. Beta + Premium required.`
+    : `**✨ AI ile Komut Çalıştırma (YENİ!)** — \`rise <doğal dilde istek>\`\n  Örn: \`rise @Ahmet'i 10dk sustur spam\`, \`rise param ne kadar\`\n  Yetkiler denetlenir, sahip komutları hariç. Beta + Premium gerekir.`;
+  return `${riseBilgi}\n\n${liste}`;
 }
 
 exports.run = async (client, message, args) => {

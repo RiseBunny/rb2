@@ -37,7 +37,7 @@ exports.run = (client, message) => {
 exports.conf = {
   enabled: true,
   guildOnly: false,
-  aliases: ['mod'],
+  aliases: [],
   kategori: "Bot",
   permLevel: 0
 };
