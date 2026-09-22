@@ -427,19 +427,26 @@ console.log("[Mağaza] :/api/user/:id + /api/shop hazır" + (BOT_API_SECRET ? ""
 
 app.post("/api/contact", _botAuth, express.json(), async (req, res) => {
   try {
-    const name = String(req.body?.name || "").slice(0, 60);
+    const discordId = String(req.body?.discordId || "").replace(/\D/g, "").slice(0, 25);
+    const username = String(req.body?.username || req.body?.name || "").slice(0, 60);
     const email = String(req.body?.email || "").slice(0, 120);
     const subject = String(req.body?.subject || "").slice(0, 120);
     const message = String(req.body?.message || "").slice(0, 2000);
-    if (!name || !email || !message) return res.status(400).json({ error: "eksik alan" });
+    const lang = req.body?.lang === "en" ? "en" : "tr";
+    if (!message || message.length < 3) return res.status(400).json({ error: "eksik alan" });
+    if (!discordId && (!username || !email)) return res.status(400).json({ error: "eksik alan" });
+    // Admin/mod paneli + Firestore gelen kutusu için kaydet (Discord kimlikli)
+    let mesajId = null;
+    if (discordId) {
+      try { mesajId = await U.siteMesajKaydet({ discordId, username, subject, message, lang }); } catch {}
+    }
     U.ownerLog(client, new Discord.EmbedBuilder().setColor("Blue").setTitle("✉️ Site İletişim Formu")
       .addFields(
-        { name: "İsim", value: name, inline: true },
-        { name: "E-posta", value: email, inline: true },
+        { name: "Discord", value: discordId ? `<@${discordId}> (\`${discordId}\`)` : `${username}`, inline: true },
         { name: "Konu", value: subject || "-", inline: false },
         { name: "Mesaj", value: message.slice(0, 1000) || "-", inline: false }
       ).setTimestamp()).catch(() => {});
-    res.json({ ok: true });
+    res.json({ ok: true, id: mesajId || undefined });
   } catch { res.status(500).json({ error: "hata" }); }
 });
 app.post("/api/notify", _botAuth, express.json(), async (req, res) => {

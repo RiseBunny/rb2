@@ -697,6 +697,35 @@ async function siteRolVer(discordId, rol) {
   } catch { cikti.neden = "hata"; return cikti; }
 }
 
+/** Site iletişim formu mesajını Firestore `messages` koleksiyonuna yazar.
+    Rules `messages.create` anahtarsız yazıma izin verir (alan listesi sabit). */
+async function siteMesajKaydet({ discordId, username, subject, message, lang }) {
+  try {
+    const r = await fetch(
+      `https://firestore.googleapis.com/v1/projects/${FB_PROJE}/databases/(default)/documents/messages?key=${FB_ANAHTAR}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fields: {
+            name: { stringValue: String(username || "Discord Üyesi").slice(0, 60) },
+            email: { stringValue: `d${String(discordId).replace(/\D/g, "")}@discord.risebunny.local` },
+            subject: { stringValue: String(subject || "").slice(0, 120) },
+            message: { stringValue: String(message || "").slice(0, 2000) },
+            lang: { stringValue: lang === "en" ? "en" : "tr" },
+            createdAt: { integerValue: String(Date.now()) },
+            discordId: { stringValue: String(discordId).replace(/\D/g, "") },
+            discordName: { stringValue: String(username || "").slice(0, 60) },
+          },
+        }),
+      }
+    );
+    if (!r.ok) return null;
+    const j = await r.json().catch(() => null);
+    return (j && j.name ? j.name.split("/").pop() : null) || true;
+  } catch { return null; }
+}
+
 module.exports = {
   db,
   firestoreSil,
@@ -729,6 +758,7 @@ module.exports = {
   siteUidBul,
   siteRolVer,
   SITE_ROLLERI,
+  siteMesajKaydet,
   startHatirlatSweeper,
   parseSure,
   xpSeviye,
