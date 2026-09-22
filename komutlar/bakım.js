@@ -2,6 +2,7 @@ const Discord = require('discord.js');
 const db = require('croxydb');
 const { getLangSync } = require("../dil");
 const U = require("../utils");
+const { isMod } = require("../ai/executor");
 
 function durum() {
   const bot = db.fetch("8182bakımaç81") || null;
@@ -12,7 +13,7 @@ function durum() {
 exports.run = async (client, message, args) => {
   const lang = getLangSync(message.author.id);
   const EN = lang === "en";
-  if (message.author.id !== U.SAHIP_ID)
+  if (message.author.id !== U.SAHIP_ID && !isMod(message.author.id))
     return message.channel.send({ content: EN ? ' Only **my owner** can set maintenance mode.' : ' Sadece **sahibim** bakım modu ayarlayabilir.' });
 
   const sebep = args.slice(0).join(' ') || (EN ? 'Scheduled maintenance.' : 'Planlı bakım.');

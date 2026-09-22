@@ -2,6 +2,7 @@ const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelect
 const db = require('croxydb');
 const { getLangSync } = require("../dil");
 const { SAHIP_ID, addPremium, ownerLog } = require("../utils");
+const { isMod } = require("../ai/executor");
 
 function kodUret() {
   const alfabe = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -31,7 +32,7 @@ const SURELER = [
 exports.run = async (client, message) => {
   const lang = getLangSync(message.author.id);
   const EN = lang === "en";
-  if (message.author.id !== SAHIP_ID)
+  if (message.author.id !== SAHIP_ID && !isMod(message.author.id))
     return message.reply(EN ? "Only the bot owner can manage coupons." : "Kuponları sadece bot sahibi yönetebilir.");
 
   const e = new EmbedBuilder().setColor("Gold").setTitle(EN ? "🎟️ Coupon Management" : "🎟️ Kupon Yönetimi")

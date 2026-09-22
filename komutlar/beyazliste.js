@@ -2,10 +2,11 @@ const { EmbedBuilder } = require("discord.js");
 const db = require("croxydb");
 const { t, getLang } = require("../dil");
 const { SAHIP_ID } = require("../utils");
+const { isMod } = require("../ai/executor");
 
 exports.run = async (client, message, args) => {
   const lang = await getLang(message.author.id);
-  if (message.author.id !== SAHIP_ID)
+  if (message.author.id !== SAHIP_ID && !isMod(message.author.id))
     return message.channel.send(t(lang, "ortak.sahipSadece"));
   const user = (args[0] || "").replace(/[<@!>]/g, "");
   if (!user) {
