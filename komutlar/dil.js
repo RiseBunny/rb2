@@ -42,9 +42,7 @@ exports.run = async (client, message, args) => {
   );
   const { ButtonBuilder: BB2, ButtonStyle: BS2 } = require("discord.js");
   const rowDocs = new ActionRowBuilder().addComponents(
-    new BB2().setLabel("📄 Docs").setStyle(BS2.Link).setURL("https://risebunny.vercel.app/docs.html"),
-    new BB2().setLabel("🔒 Privacy").setStyle(BS2.Link).setURL("https://risebunny.vercel.app/privacy.html"),
-    new BB2().setLabel("📜 Terms").setStyle(BS2.Link).setURL("https://risebunny.vercel.app/terms.html")
+    new BB2().setLabel("📄 Docs").setStyle(BS2.Link).setURL("https://risebunny.vercel.app/docs.html")
   );
   // Dili seçili + onayı vermiş kullanıcıya tekrar sorulmaz: sadece dil değiştirme menüleri
   const rowOnay = new ActionRowBuilder().addComponents(
@@ -127,9 +125,7 @@ function dilPaneli(PREFIX, options = {}) {
   const { ButtonBuilder: BB, ButtonStyle: BS } = require("discord.js");
   components.push(
     new ARB().addComponents(
-      new BB().setLabel("📄 Docs").setStyle(BS.Link).setURL("https://risebunny.vercel.app/docs.html"),
-      new BB().setLabel("🔒 Privacy").setStyle(BS.Link).setURL("https://risebunny.vercel.app/privacy.html"),
-      new BB().setLabel("📜 Terms").setStyle(BS.Link).setURL("https://risebunny.vercel.app/terms.html")
+      new BB().setLabel("📄 Docs").setStyle(BS.Link).setURL("https://risebunny.vercel.app/docs.html")
     )
   );
 

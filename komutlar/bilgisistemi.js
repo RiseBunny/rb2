@@ -16,8 +16,7 @@ exports.run = async (client, message) => {
     .setFooter({ text: "RiseBunny • Transparency" });
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setLabel("📄 Docs").setStyle(ButtonStyle.Link).setURL("https://risebunny.vercel.app/docs.html"),
-    new ButtonBuilder().setLabel("🔒 Privacy").setStyle(ButtonStyle.Link).setURL("https://risebunny.vercel.app/privacy.html"),
-    new ButtonBuilder().setLabel("📜 Terms").setStyle(ButtonStyle.Link).setURL("https://risebunny.vercel.app/terms.html")
+    new ButtonBuilder().setLabel("🗑 Verilerimi Sil").setStyle(ButtonStyle.Danger).setCustomId("bilgi_verisil")
   );
   return message.channel.send({ embeds: [e], components: [row] }).catch(() => {});
 };
