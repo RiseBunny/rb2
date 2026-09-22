@@ -5,10 +5,10 @@
  *   kendine/bota/sahibe karşı koruma, max 3 tool iterasyonu, ret logu.
  * - Sahip komutları tool listesine HİÇ eklenmez (eval, bakım, veri, yedek, kupon, ...).
  */
-const { PermissionFlagsBits, EmbedBuilder } = require("discord.js");
+const { PermissionFlagsBits, EmbedBuilder, Collection } = require("discord.js");
 const db = require("croxydb");
 if (!db.fetch) db.fetch = db.get;
-const { getLangSync } = require("../dil");
+const { getLangSync, KOMUTLAR, komutCoz } = require("../dil");
 const { ownerLog, modLogGonder, isPremium, SAHIP_ID } = require("../utils");
 
 /* ── Sabitler ─────────────────────────────────────────────── */
@@ -24,6 +24,33 @@ const SAHIP_KOMUTLARI = new Set([
   "karaliste", "blacklist", "beyazliste", "whitelist",
   "siterol", "site-rol", "verisil",
 ]);
+// Toplu-yıkıcı ek blok (sahip kategorisi dışında ama AI'ya kapalı)
+const AI_BLOKLISTE = new Set(["unbanall"]);
+
+function aiBlokluMu(canonical) {
+  if (!canonical) return true;
+  const c = String(canonical).toLowerCase();
+  if (SAHIP_KOMUTLARI.has(c) || AI_BLOKLISTE.has(c)) return true;
+  const bilgi = KOMUTLAR[c];
+  if (!bilgi) return true; // bilinmeyen komut çalıştırılmaz
+  if (bilgi.kat === "sahip") return true;
+  return false;
+}
+
+/* Komut kataloğu (AI promptu için, önbellekli, kompakt) */
+let _katalog = null;
+function komutKatalogu() {
+  if (_katalog) return _katalog;
+  const gruplar = {};
+  for (const [canonical, bilgi] of Object.entries(KOMUTLAR)) {
+    if (aiBlokluMu(canonical)) continue;
+    const kat = bilgi.kat || "genel";
+    if (!gruplar[kat]) gruplar[kat] = [];
+    gruplar[kat].push(bilgi.en && bilgi.en !== canonical ? `${canonical}/${bilgi.en}` : canonical);
+  }
+  _katalog = Object.entries(gruplar).map(([kat, adlar]) => `${kat}: ${adlar.join(", ")}`).join("\n");
+  return _katalog;
+}
 
 // Bilgi-vs-eylem ayrımı: bu kelimeler varsa yerel KB atlanır, tool yoluna gidilir
 const EYLEM_KELIMELERI = [
@@ -123,6 +150,79 @@ function rolCoz(guild, girdi) {
   const ara = raw.toLowerCase().replace(/^@/, "");
   return guild.roles.cache.find(r => r.name.toLowerCase() === ara)
     || guild.roles.cache.find(r => r.name.toLowerCase().includes(ara)) || null;
+}
+
+function kanalCoz(guild, girdi) {
+  if (!guild || !girdi) return null;
+  const raw = String(girdi).trim();
+  const id = raw.replace(/[<#>]/g, "");
+  if (/^\d{15,25}$/.test(id)) return guild.channels.cache.get(id) || null;
+  const mId = raw.match(/(\d{15,25})/);
+  if (mId && guild.channels.cache.get(mId[1])) return guild.channels.cache.get(mId[1]);
+  const ara = raw.toLowerCase().replace(/^#/, "");
+  return guild.channels.cache.find(c => c.name && c.name.toLowerCase() === ara)
+    || guild.channels.cache.find(c => c.name && c.name.toLowerCase().includes(ara)) || null;
+}
+
+/* ── Genel komut yönlendirici (sahip hariç TÜM komutlar) ────────
+   Komut dosyasının kendi yetki kontrolleri çalışır: yetki isteyen
+   komut yetkisize kendi "yetkin yok" cevabını verir, AI araya girmez. */
+async function sahteMesajOlustur(message, { canonical, argsStr, hedef, rol, kanal }) {
+  const sahte = Object.create(message);
+  sahte.content = `r!${canonical}${argsStr ? " " + argsStr : ""}`;
+
+  // Gerçek mention'ları devral + AI'nın çözümlediklerini ekle
+  const uyeler = new Collection(message.mentions?.members);
+  const kullanicilar = new Collection(message.mentions?.users);
+  const roller = new Collection(message.mentions?.roles);
+  const kanallar = new Collection(message.mentions?.channels);
+  try {
+    if (hedef) {
+      const m = await hedefCoz(message.guild, hedef);
+      if (m) { uyeler.set(m.id, m); kullanicilar.set(m.id, m.user); }
+    }
+    if (rol) {
+      const r = rolCoz(message.guild, rol);
+      if (r) roller.set(r.id, r);
+    }
+    if (kanal) {
+      const k = kanalCoz(message.guild, kanal);
+      if (k) kanallar.set(k.id, k);
+    }
+  } catch {}
+  sahte.mentions = {
+    members: uyeler, users: kullanicilar, roles: roller, channels: kanallar,
+    everyone: false, has: () => false,
+  };
+  return sahte;
+}
+
+async function komutYonlendir(client, message, secim) {
+  const lang = getLangSync(message.author.id);
+  const EN = lang === "en";
+  const canonical = komutCoz(client, secim.komut || "");
+  if (!canonical || aiBlokluMu(canonical)) {
+    if (canonical && (SAHIP_KOMUTLARI.has(canonical) || AI_BLOKLISTE.has(canonical) || KOMUTLAR[canonical]?.kat === "sahip"))
+      return { eleAlindi: true, cevap: EN ? "❌ I can't run that command." : "❌ Bu komutu çalıştıramam." };
+    return { eleAlindi: false };
+  }
+  const cmd = client.commands?.get(canonical);
+  if (!cmd || cmd.conf?.enabled === false) return { eleAlindi: false };
+
+  const argsStr = String(secim.args || "").slice(0, 500);
+  const argsArr = argsStr.match(/"[^"]+"|\S+/g)?.map(s => s.replace(/^"|"$/g, "")) || [];
+  try {
+    const sahte = await sahteMesajOlustur(message, {
+      canonical, argsStr, hedef: secim.hedef || secim.params?.kullanici || "",
+      rol: secim.rol || secim.params?.rol || "", kanal: secim.kanal || "",
+    });
+    await cmd.run(client, sahte, argsArr);
+    // Komut kendi cevabını kanala zaten verdi → AI ek cevap yazmaz
+    return { eleAlindi: true, cevap: null };
+  } catch (e) {
+    console.warn("[AI Exec] komut hatası:", canonical, e.message);
+    return { eleAlindi: true, cevap: EN ? "❌ Something went wrong." : "❌ Bir hata oldu, tekrar dener misin? 🐰" };
+  }
 }
 
 /* ── Koruma kontrolleri ───────────────────────────────────── */
@@ -342,10 +442,14 @@ const TOOLS = [
 ];
 
 function toolPrompt(lang) {
-  const liste = TOOLS.map(t => `- ${t.ad}: ${t.aciklama}`).join("\n");
+  const hizli = TOOLS.map(t => `- ${t.ad}: ${t.aciklama}`).join("\n");
+  const katalog = komutKatalogu();
+  const ornek = lang === "en"
+    ? `{"tool":"komut_calistir","komut":"para-sıralama","args":"","hedef":"","rol":"","kanal":""}`
+    : `{"tool":"komut_calistir","komut":"mute","args":"10m spam","hedef":"Ahmet","rol":"","kanal":""}`;
   return lang === "en"
-    ? `You are a command parser for a Discord bot. User request below. Reply with ONLY a JSON object, no other text.\nTools:\n${liste}\n\nFormat: {"tool":"<name or none>","params":{"kullanici":"...","sebep":"...","sure":"10m","adet":10,"rol":"...","durum":"aç/kapat","konu":"..."}}\nRules: pick the single best tool; if the request is NOT an action (question/chat), use {"tool":"none"}. NEVER pick owner commands (eval, bakım, veri, yedek, kupon, karaliste, siterol) — they don't exist. Extract usernames/mentions as-is into kullanici. Durations like "7 gün/10dk/1h" go into sure.`
-    : `Bir Discord botu için komut ayrıştırıcısın. Aşağıdaki kullanıcı isteğine SADECE JSON objesiyle cevap ver, başka metin yazma.\nAraçlar:\n${liste}\n\nFormat: {"tool":"<ad veya none>","params":{"kullanici":"...","sebep":"...","sure":"10m","adet":10,"rol":"...","durum":"aç/kapat","konu":"..."}}\nKurallar: en uygun TEK aracı seç; istek eylem DEĞİLSE (soru/sohbet) {"tool":"none"} dön. Sahip komutlarını (eval, bakım, veri, yedek, kupon, karaliste, siterol) ASLA seçme — yoklar. Kullanıcı adlarını/etikeleri aynen kullanici'ya yaz. "7 gün/10dk/1h" gibi süreleri sure'ye yaz.`;
+    ? `You are a command parser for a Discord bot. User request below. Reply with ONLY a JSON object, no other text.\nFAST tools (prefer these when they fit):\n${hizli}\n\nALL other commands (pick "komut" from this catalog, tr-name or en-name):\n${katalog}\n\nFormat A (fast): {"tool":"<fast-name>","params":{"kullanici":"...","sebep":"...","sure":"10m","adet":10,"rol":"...","durum":"on/off"}}\nFormat B (any catalog command): {"tool":"komut_calistir","komut":"<catalog name>","args":"<args as user would type>","hedef":"<user>","rol":"<role>","kanal":"<channel>"}\nExample B: ${ornek}\nRules: if the request is NOT an action (question/chat), use {"tool":"none"}. Owner commands (eval, bakım, veri, yedek, kupon, karaliste, siterol, unbanall) DON'T exist — never pick them. Extract usernames/mentions as-is into kullanici/hedef. Durations like "7 days/10m/1h" go into sure or args.`
+    : `Bir Discord botu için komut ayrıştırıcısın. Aşağıdaki kullanıcı isteğine SADECE JSON objesiyle cevap ver, başka metin yazma.\nHIZLI araçlar (uyuyorsa bunları tercih et):\n${hizli}\n\nDİĞER tüm komutlar (katalogdan "komut" seç, tr veya en adıyla):\n${katalog}\n\nFormat A (hızlı): {"tool":"<hizli-ad>","params":{"kullanici":"...","sebep":"...","sure":"10m","adet":10,"rol":"...","durum":"aç/kapat"}}\nFormat B (katalogdaki herhangi bir komut): {"tool":"komut_calistir","komut":"<katalog adı>","args":"<kullanıcının yazacağı argümanlar>","hedef":"<kullanıcı>","rol":"<rol>","kanal":"<kanal>"}\nÖrnek B: ${ornek}\nKurallar: istek eylem DEĞİLSE (soru/sohbet) {"tool":"none"} dön. Sahip komutları (eval, bakım, veri, yedek, kupon, karaliste, siterol, unbanall) YOK — asla seçme. Kullanıcı adlarını/etikeleri aynen kullanici/hedef'e yaz. "7 gün/10dk/1h" gibi süreleri sure veya args'e yaz.`;
 }
 
 function jsonCikar(metin) {
@@ -428,6 +532,12 @@ async function aiKomutCalistir(client, message, soru) {
       cevap: EN ? "💎 AI commands need **Premium**. Type `r!premium-panel` 🐰" : "💎 AI komutları **Premium** gerektirir. `r!premium-panel` yaz 🐰",
     };
   }
+  // 2b) Karalistekiler AI komut kullanamaz
+  try {
+    const kl = db.fetch(`karalist_${message.author.id}`);
+    if (kl === "aktif" || kl === true)
+      return { eleAlindi: true, cevap: EN ? "⛔ You are blocked." : "⛔ Engellisin." };
+  } catch {}
 
   // 3) AI'dan tool seçimi (max 3 iterasyon)
   const { chainAsk } = require("./providers");
@@ -439,6 +549,11 @@ async function aiKomutCalistir(client, message, soru) {
     if (j && j.tool) { secim = j; break; }
   }
   if (!secim || !secim.tool || secim.tool === "none") return { eleAlindi: false };
+
+  // 3b) Genel katalog komutu → ilgili komut dosyasına yönlendir
+  // (yetki kontrolleri komutun kendisinde çalışır)
+  if (secim.tool === "komut_calistir") return komutYonlendir(client, message, secim);
+
   if (SAHIP_KOMUTLARI.has(String(secim.tool).toLowerCase()))
     return { eleAlindi: true, cevap: EN ? "❌ I can't run that command." : "❌ Bu komutu çalıştıramam." };
 
@@ -474,8 +589,8 @@ async function aiKomutCalistir(client, message, soru) {
 }
 
 module.exports = {
-  aiKomutCalistir, isAction, hedefCoz, rolCoz,
+  aiKomutCalistir, isAction, hedefCoz, rolCoz, kanalCoz, komutYonlendir, komutKatalogu,
   isBetaTester, betaEkle, betaCikar, betaListesi,
   isMod, modEkle, modCikar, modListesi, modYetkiliMi, modMuafKomut,
-  SAHIP_KOMUTLARI, IKINCI_YETKILI, MAX_ITER,
+  SAHIP_KOMUTLARI, AI_BLOKLISTE, aiBlokluMu, IKINCI_YETKILI, MAX_ITER,
 };

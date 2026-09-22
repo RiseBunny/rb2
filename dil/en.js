@@ -516,7 +516,7 @@ onay: {
     reddet: '❌ Decline',
     kabulOk: '✅ Consent accepted! You can now use all commands.',
     reddetMesaj: '❌ Terms of Service not accepted. You cannot use commands.\nYou can retry anytime by typing `r!dil`.',
-    gerekli: '⚠️ You must accept the **Terms of Service** before using RiseBunny.\n\nPlease press the **\"Accept\"** button below to consent.\n\n💡 **Continue from Where You Left Off**: Pick up where you left off, just keep typing `rise <question>`.',
+    gerekli: '⚠️ You must accept the **Terms of Service** before using RiseBunny. Run `r!dil` and press Accept to consent.\n\nPlease press the **\"Accept\"** button below to consent.\n\n💡 **Continue from Where You Left Off**: Pick up where you left off, just keep typing `rise <question>`.',
     onayPanel: '📋 **Terms of Service and Privacy Policy**\n\nBy using RiseBunny, you agree to the following:\n\n1. Your data is processed to improve service quality\n2. Your data is never shared without your consent\n3. **Your data is not shared with 3rd parties**\n4. Spam/harmful content is prohibited\n5. Terms may be updated without notice\n\nPress **Accept** to continue.'
 },
   seviye: {

@@ -14,8 +14,17 @@ const db = require("croxydb");
 const fs = require("fs");
 const path = require("path");
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
-const { getLangSync } = require("../dil");
-const { ownerLog } = require("../utils");
+const { getLangSync, hasLang, hasConsent } = require("../dil");
+const { ownerLog, SAHIP_ID } = require("../utils");
+const { isMod } = require("./executor");
+
+/** Global eğitim onayı: sahip + bot modları kabul/ret edebilir. */
+function sahipVeyaModMu(userId) {
+  try {
+    if (String(userId) === String(OWNER_ID)) return true;
+    return isMod(userId);
+  } catch { return String(userId) === String(OWNER_ID); }
+}
 
 // AI Matcher başlat (croxydb ile)
 const matcher = new SoruEslestirici(db);
@@ -264,6 +273,41 @@ async function sunucuOnayMesaji(client, guild, ogretenUser, soru, cevap, pid, la
 }
 
 /**
+ * Global eğitim onayı (sahip onaylı ai_qa_ havuzu) — sunucudaki
+ * modların da kabul/ret verebilmesi için onay kartını sunucuya gönderir.
+ * Hedef: otomasyon no-answer kanalı → mod-log kanalı. Yoksa atlanır
+ * (sahip logundaki kart zaten var).
+ */
+async function sunucuGlobalOnayMesaji(client, guild, soru, cevap, pid, lang) {
+  try {
+    if (!guild) return;
+    let hedef = null;
+    try {
+      const cfg = db.fetch(`otomasyon_${guild.id}`);
+      if (cfg?.noAnswerKanal) {
+        const kc = guild.channels.cache.get(cfg.noAnswerKanal);
+        if (kc?.isTextBased()) hedef = kc;
+      }
+    } catch {}
+    if (!hedef) {
+      try {
+        const logId = db.fetch(`log_${guild.id}`);
+        const lc = logId && guild.channels.cache.get(logId);
+        if (lc?.isTextBased()) hedef = lc;
+      } catch {}
+    }
+    if (!hedef) return;
+    const logResult = createOwnerLogLearn({
+      soru, cevap, guild,
+      user: { tag: guild.name, id: guild.id },
+      lang, action: "learned", cacheId: pid,
+    });
+    if (!logResult) return;
+    // Sahip ping'i yok — sadece embed + Kabul/Reddet butonları (sahip+mod basabilir)
+    await hedef.send({ embeds: logResult.embeds, components: logResult.components }).catch(() => {});
+  } catch {}
+}
+/**
  * "RiseBunny'ye öğret" — doğrudan kaydetmez; onay havuzuna alır
  */
 async function ogrenenCevapKaydet(interaction, soru, cevap) {
@@ -290,6 +334,8 @@ async function ogrenenCevapKaydet(interaction, soru, cevap) {
     });
 
     await sunucuOnayMesaji(interaction.client, interaction.guild, interaction.user, soru, cevap, pid, lang);
+    // Global havuz kartı: modlar da kabul/ret verebilsin
+    await sunucuGlobalOnayMesaji(interaction.client, interaction.guild, soru, cevap, pid, lang);
   } catch (e) {
     console.error("[AI Öğrenme Hatası]:", e);
     const lang = getLangSync(interaction.user.id);
@@ -367,6 +413,27 @@ async function aiIsle(message, client) {
 
   const tetikleyiciUzunluk = lowerContent.startsWith("rise ") ? 5 : 4;
   const soru = icerik.slice(tetikleyiciUzunluk).trim();
+
+  // Dil + onay kilidi (sahip muaf): dili yoksa dil paneline, onayı yoksa r!dil'e yönlendir
+  if (message.author.id !== SAHIP_ID) {
+    const { t } = require("../dil");
+    if (!hasLang(message.author.id)) {
+      const prefix = process.env.PREFIX || "r!";
+      await message.reply({
+        content: `🌍 Önce dilini seç / Select your language: \`${prefix}dil tr\` / \`${prefix}dil en\``,
+        allowedMentions: { repliedUser: false },
+      }).catch(() => {});
+      return true;
+    }
+    if (!hasConsent(message.author.id)) {
+      const lang0 = getLangSync(message.author.id);
+      await message.reply({
+        content: t(lang0, "onay.gerekli"),
+        allowedMentions: { repliedUser: false },
+      }).catch(() => {});
+      return true;
+    }
+  }
 
   // Bakım modu kontrolü - bakımda AI kullanılamaz
   const db = require("croxydb");
@@ -803,9 +870,9 @@ async function ownerButonIsle(interaction, client) {
   // Owner AI kaydet (Kabul Et)
   if (customId.startsWith("owner_ai_save_")) {
     const { t } = require("../dil");
-    if (interaction.user.id !== OWNER_ID) {
+    if (!sahipVeyaModMu(interaction.user.id)) {
       const lang = getLangSync(interaction.user.id);
-      return interaction.reply({ content: t(lang, "ai.sadeceSahip"), ephemeral: true }).catch(() => {});
+      return interaction.reply({ content: lang === "en" ? "❌ Only the owner or mods can use this button." : "❌ Bu butonu sadece sahip veya modlar kullanabilir.", ephemeral: true }).catch(() => {});
     }
 
     try {
@@ -832,7 +899,7 @@ async function ownerButonIsle(interaction, client) {
         cevap: cevap,
         kategori: "owner_saved",
         kaynak: "owner_approved",
-        ekleyen: OWNER_ID,
+        ekleyen: interaction.user.id,
         kullanim: 0,
         faydali: 0,
         created_at: Date.now()
@@ -863,9 +930,9 @@ async function ownerButonIsle(interaction, client) {
   // Owner AI sil (Reddet)
   if (customId.startsWith("owner_ai_delete_")) {
     const { t } = require("../dil");
-    if (interaction.user.id !== OWNER_ID) {
+    if (!sahipVeyaModMu(interaction.user.id)) {
       const lang = getLangSync(interaction.user.id);
-      return interaction.reply({ content: t(lang, "ai.sadeceSahip"), ephemeral: true }).catch(() => {});
+      return interaction.reply({ content: lang === "en" ? "❌ Only the owner or mods can use this button." : "❌ Bu butonu sadece sahip veya modlar kullanabilir.", ephemeral: true }).catch(() => {});
     }
 
     try {
@@ -914,9 +981,9 @@ async function ownerButonIsle(interaction, client) {
   // Owner AI öğret
   if (customId.startsWith("owner_ai_teach_")) {
     const { t } = require("../dil");
-    if (interaction.user.id !== OWNER_ID) {
+    if (!sahipVeyaModMu(interaction.user.id)) {
       const lang = getLangSync(interaction.user.id);
-      return interaction.reply({ content: t(lang, "ai.sadeceSahip"), ephemeral: true }).catch(() => {});
+      return interaction.reply({ content: lang === "en" ? "❌ Only the owner or mods can use this button." : "❌ Bu butonu sadece sahip veya modlar kullanabilir.", ephemeral: true }).catch(() => {});
     }
 
     const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require("discord.js");
@@ -962,9 +1029,9 @@ async function ownerModalIsle(interaction, client) {
   
   if (customId.startsWith("owner_ai_teach_modal_")) {
     const { t } = require("../dil");
-    if (interaction.user.id !== OWNER_ID) {
+    if (!sahipVeyaModMu(interaction.user.id)) {
       const lang = getLangSync(interaction.user.id);
-      return interaction.reply({ content: t(lang, "ai.sadeceSahip"), ephemeral: true }).catch(() => {});
+      return interaction.reply({ content: lang === "en" ? "❌ Only the owner or mods can use this button." : "❌ Bu butonu sadece sahip veya modlar kullanabilir.", ephemeral: true }).catch(() => {});
     }
 
     try {
@@ -988,7 +1055,7 @@ async function ownerModalIsle(interaction, client) {
         cevap: cevap,
         kategori: "owner_taught",
         kaynak: "owner_taught",
-        ekleyen: OWNER_ID,
+        ekleyen: interaction.user.id,
         kullanim: 0,
         faydali: 0,
         created_at: Date.now()

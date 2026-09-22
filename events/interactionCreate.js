@@ -1,5 +1,5 @@
 const { EmbedBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
-const { t, getLang, setLang, setGuildLang, hasGuildLang, hasConsent, setConsent } = require("../dil");
+const { t, getLang, setLang, setGuildLang, hasGuildLang, hasLang, hasConsent, setConsent } = require("../dil");
 const { ownerLog, modLogGonder } = require("../utils");
 const db = require("croxydb");
 
@@ -182,6 +182,15 @@ module.exports = async (interaction) => {
       // --- Veri işleme onayı ---
       if (id === "onay_evet" || id === "onay_hayir") {
         const ulang = await getLang(interaction.user.id);
+        /* Dil seçmeden kabul YOK — önce dil menüsünden dil seçilmeli */
+        if (id === "onay_evet" && !hasLang(interaction.user.id)) {
+          return interaction.reply({
+            content: ulang === "en"
+              ? "⚠️ Pick your language first from the menu above, then press Accept. (r!dil)"
+              : "⚠️ Önce yukarıdaki menüden dilini seç, sonra Kabul Et'e bas. (r!dil)",
+            ephemeral: true,
+          }).catch(() => {});
+        }
         if (id === "onay_evet") {
           setConsent(interaction.user.id, true);
           try { const { ownerLog } = require("../utils"); ownerLog(interaction.client, `✅ **Onay verildi:** ${interaction.user.tag} (\`${interaction.user.id}\`)`).catch(() => {}); } catch {}
