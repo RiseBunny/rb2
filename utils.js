@@ -551,8 +551,8 @@ async function checkAndGiveLevelRole(client, userId) {
        allow update: if isBot()
          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role']);
      } */
-const FB_PROJE = "gen-lang-client-0590499912";
-const FB_ANAHTAR = process.env.FIREBASE_API_KEY || "AIzaSyAq5Nafl9aI2TabzGsj5J9ij6lNwyfTguM";
+const FB_PROJE = process.env.FIREBASE_PROJECT_ID || "gen-lang-client-0590499912";
+const FB_ANAHTAR = process.env.FIREBASE_API_KEY;
 const SILINECEK_KOLEKSIYONLAR = [
   { ad: "threads", alan: "authorId", etiket: "forum konusu" },
   { ad: "posts", alan: "authorId", etiket: "forum yanıtı" },
@@ -594,7 +594,57 @@ async function _fbDokumanBul(tok, koleksiyon, alan, uid) {
                 field: { fieldPath: alan },
                 op: "EQUAL",
                 value: { stringValue: String(uid) }
-              }
+/** Site iletişim formu mesajını Firestore `messages` koleksiyonuna yazar.
+    Rules `messages.create` anahtarsız yazıma izin verir (alan listesi sabit). */
+async function siteMesajKaydet({ discordId, username, subject, message, lang }) {
+  try {
+    const r = await fetch(
+      `https://firestore.googleapis.com/v1/projects/${FB_PROJE}/databases/(default)/documents/messages?key=${FB_ANAHTAR}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fields: {
+            name: { stringValue: String(username || "Discord Üyesi").slice(0, 60) },
+            email: { stringValue: `d${String(discordId).replace(/\D/g, "")}@discord.risebunny.local` },
+            subject: { stringValue: String(subject || "").slice(0, 120) },
+            message: { stringValue: String(message || "").slice(0, 2000) },
+            lang: { stringValue: lang === "en" ? "en" : "tr" },
+            createdAt: { integerValue: String(Date.now()) },
+            discordId: { stringValue: String(discordId).replace(/\D/g, "") },
+            discordName: { stringValue: String(username || "").slice(0, 60) },
+          },
+        }),
+      }
+    );
+    if (!r.ok) return null;
+    const j = await r.json().catch(() => null);
+    return (j && j.name ? j.name.split("/").pop() : null) || true;
+  } catch { return null; }
+}
+
+/** Bot API'ye iletişim mesajı gönderir (sahip loguna düşer). */
+async function sendContactToBot(discordId, username, subject, message) {
+  try {
+    const res = await fetch(`${process.env.BOT_API_URL || "https://api.risebunny.vercel.app"}/api/contact`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Bot-Secret": process.env.BOT_API_SECRET || ""
+      },
+      body: JSON.stringify({ discordId, username, subject, message, lang: "tr" })
+    });
+    return res.ok;
+  } catch { return false; }
+}
+
+/** Config listesi için random ID. */
+function randomId(len = 8) {
+  const abc = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  let s = "";
+  for (let i = 0; i < len; i++) s += abc[Math.floor(Math.random() * abc.length)];
+  return s;
+}
             },
             limit: 300
           }
@@ -769,5 +819,9 @@ module.exports = {
   checkAndGiveLevelRole,
   seviyeOdulu,
   SEVIYE_ODULLERI,
-  Perms: PermissionFlagsBits
+  Perms: PermissionFlagsBits,
+  // Yeni eklenenler:
+  sendContactToBot,
+  randomId,
+  SITE_ROLLERI
 };

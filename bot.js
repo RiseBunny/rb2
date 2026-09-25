@@ -637,6 +637,92 @@ app.post("/api/login", _botAuth, express.json(), async (req, res) => {
   } catch { res.status(500).json({ error: "hata" }); }
 });
 
+app.post("/api/contact", _botAuth, express.json(), async (req, res) => {
+  try {
+    const { discordId, username, subject, message, lang } = req.body;
+    if (!discordId || !subject || !message) return res.status(400).json({ error: "eksik alan" });
+    
+    const contactId = U.randomId(10);
+    const now = Date.now();
+    
+    // Firestore'a kaydet
+const FB_PROJE = process.env.FIREBASE_PROJECT_ID || "gen-lang-client-0590499912";
+const FB_ANAHTAR = process.env.FIREBASE_API_KEY;
+    const msgDocUrl = `https://firestore.googleapis.com/v1/projects/${FB_PROJE}/databases/(default)/documents/messages/${contactId}?key=${FB_ANAHTAR}`;
+    
+    await fetch(msgDocUrl, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields: {
+        name: { stringValue: String(username || "Discord Üyesi").slice(0, 60) },
+        email: { stringValue: `d${String(discordId).replace(/\D/g, "")}@discord.risebunny.local` },
+        subject: { stringValue: String(subject || "").slice(0, 120) },
+        message: { stringValue: String(message || "").slice(0, 2000) },
+        lang: { stringValue: lang === "en" ? "en" : "tr" },
+        createdAt: { integerValue: String(Date.now()) },
+        discordId: { stringValue: String(discordId).replace(/\D/g, "") },
+        discordName: { stringValue: String(username || "").slice(0, 60) },
+        status: { stringValue: "unread" }
+      }})
+    });
+    
+    // Sahip loguna embed gönder
+    const ownerLogChannel = client.channels.cache.get(U.OWNER_LOG);
+    if (ownerLogChannel) {
+      const embed = new Discord.EmbedBuilder()
+        .setColor("Blurple")
+        .setTitle("📬 Yeni İletişim Mesajı")
+        .addFields(
+          { name: "ID", value: `#${contactId}`, inline: true },
+          { name: "Kullanıcı", value: `<@${discordId}>\n\`${discordId}\``, inline: true },
+          { name: "Kullanıcı adı", value: username || "—", inline: true },
+          { name: "Konu", value: subject.slice(0, 100) },
+          { name: "Mesaj", value: message.slice(0, 1000) }
+        )
+        .setTimestamp();
+      
+      const row = new Discord.ActionRowBuilder().addComponents(
+        new Discord.ButtonBuilder().setCustomId(`contact_reply_${contactId}`).setLabel("Cevap Ver").setStyle(Discord.ButtonStyle.Primary).setEmoji("💬")
+      );
+      
+      await ownerLogChannel.send({ embeds: [embed], components: [row] });
+    }
+    
+    res.json({ ok: true, id: contactId });
+  } catch (e) { console.error("[contact] hata:", e.message); res.status(500).json({ error: "hata" }); }
+});
+
+// Config bildirimi endpoint'i (launcher config yüklerken)
+app.post("/api/config/notify", _botAuth, express.json(), async (req, res) => {
+  try {
+    const { discordId, username, configId, name } = req.body;
+    if (!discordId || !configId || !name) return res.status(400).json({ error: "eksik alan" });
+    
+    const ownerLogChannel = client.channels.cache.get(U.OWNER_LOG);
+    if (ownerLogChannel) {
+      const embed = new Discord.EmbedBuilder()
+        .setColor("Yellow")
+        .setTitle("📤 Yeni Config Yüklendi")
+        .addFields(
+          { name: "Yükleyen", value: `<@${discordId}> (${username})`, inline: true },
+          { name: "Config ID", value: `\`${configId}\``, inline: true },
+          { name: "Config Adı", value: name, inline: true }
+        )
+        .setTimestamp();
+      
+      const row = new Discord.ActionRowBuilder().addComponents(
+        new Discord.ButtonBuilder().setCustomId(`config_accept_${configId}`).setLabel("Kabul Et").setStyle(Discord.ButtonStyle.Success).setEmoji("✅"),
+        new Discord.ButtonBuilder().setCustomId(`config_reject_${configId}`).setLabel("Reddet").setStyle(Discord.ButtonStyle.Danger).setEmoji("❌")
+      );
+      
+      const sent = await ownerLogChannel.send({ embeds: [embed], components: [row] });
+      // Log mesajı ID'sini sakla
+      require("croxydb").set(`configLog_${configId}`, { channelId: ownerLogChannel.id, messageId: sent.id });
+    }
+    res.json({ ok: true });
+  } catch (e) { console.error("[config/notify] hata:", e.message); res.status(500).json({ error: "hata" }); }
+});
+
 const TOPGG_BOT_ID = process.env.TOPGG_BOT_ID || "1540401487581020252";
 const TOPGG_SECRET = process.env.TOPGG_WEBHOOK_SECRET || "";
 const votePath = process.env.TOPGG_WEBHOOK_URL ? new URL(process.env.TOPGG_WEBHOOK_URL).pathname : "/api/topgg/vote";

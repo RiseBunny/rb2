@@ -1,759 +1,234 @@
-const { EmbedBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
-const { t, getLang, setLang, setGuildLang, hasGuildLang, hasLang, hasConsent, setConsent } = require("../dil");
-const { ownerLog, modLogGonder } = require("../utils");
-const db = require("croxydb");
+const { Events, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, PermissionFlagsBits, ModalBuilder, TextInputBuilder, TextInputStyle } = require("discord.js");
+const { t, getLangSync } = require("../dil");
+const U = require("../utils");
+const croxydb = require("croxydb");
+const db = croxydb;
 
-module.exports = async (interaction) => {
-  try {
-    // Consent gate for interactions (buttons/selects) — allow language select, consent buttons, owner bypass
-    if (interaction.isButton() || interaction.isStringSelectMenu()) {
-      const { SAHIP_ID } = require("../utils");
-      const isOwner = interaction.user.id === SAHIP_ID;
-      const id = interaction.customId || "";
-      const isConsentButton = id === "onay_evet" || id === "onay_hayir";
-      const isLangSelect = id === "dil_sec" || id === "sdil_sec";
-      if (!isOwner && !isConsentButton && !isLangSelect) {
-        if (!hasConsent(interaction.user.id)) {
-          const ulang = await getLang(interaction.user.id);
-          return interaction.reply({ content: t(ulang, "onay.gerekli"), ephemeral: true }).catch(() => {});
-        }
-      }
-    }
-    if (interaction.isStringSelectMenu()) {
-      if (interaction.customId === "dil_sec") {
-        const sec = interaction.values[0];
-        setLang(interaction.user.id, sec);
-        if (interaction.guild && interaction.guild.ownerId === interaction.user.id && !hasGuildLang(interaction.guild.id)) {
-          setGuildLang(interaction.guild.id, sec);
-        }
-        return interaction.reply({ content: t(sec, "ortak.dilOk"), ephemeral: true });
-      }
-      if (interaction.customId === "sdil_sec") {
-        const sec = interaction.values[0];
-        const klang = await getLang(interaction.user.id);
-        if (!interaction.guild) return interaction.reply({ content: t(klang, "ortak.hata"), ephemeral: true });
-        const isOwner = interaction.guild.ownerId === interaction.user.id;
-        if (!isOwner && !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) && !interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild))
-          return interaction.reply({ content: t(klang, "ortak.sunucuDilGerek"), ephemeral: true });
-        setGuildLang(interaction.guild.id, sec);
-        const dilAdi = sec === "en" ? "English" : "Türkçe";
-        return interaction.reply({ content: t(sec, "ortak.sunucuDilOk", { dil: dilAdi }), ephemeral: true });
-      }
-      if (interaction.customId === "yardim_kategori") {
-        const katId = interaction.values[0];
-        const lang = await getLang(interaction.user.id);
-        const { katAdi } = require("../dil");
-        const { kategoriListesi } = require("../komutlar/yardım");
-        const { PREFIX } = require("../utils");
-        const satirlar = kategoriListesi(interaction.client, lang, katId);
-        const embed = new EmbedBuilder()
-          .setAuthor({ name: `${katAdi(lang, katId)}`, iconURL: interaction.client.user.displayAvatarURL() })
-          .setColor("Random")
-          .setDescription(satirlar.length ? satirlar.join("\n").slice(0, 3900) : "-")
-          .setFooter({ text: `RiseBunny • ${PREFIX}` })
-          .setTimestamp();
-        return interaction.reply({ embeds: [embed], ephemeral: true }).catch(() => {});
-      }
-
-      // --- Pet global akışları ---
-      // Komut-içi menüler (pet_al_menu/pet_sat_menu select) komut collector'ına aittir → dokunma.
-      // Panel BUTONLARI (isButton) burada, g_pet_* seçimleri aşağıda ele alınır.
-      if (interaction.customId === "pet_al_menu" || interaction.customId === "pet_sat_menu") {
-        return;
-      }
-      if (interaction.customId === "g_pet_al" || interaction.customId === "g_pet_sat") {
-        const { getLangSync } = require("../dil");
-        const petMod = require("../komutlar/pet");
-        const lang = getLangSync(interaction.user.id);
-        const EN = lang === "en";
-        const userId = interaction.user.id;
-        const val = (interaction.values && interaction.values[0]) || "";
-        if (interaction.customId === "g_pet_al" && val.startsWith("g_al_")) {
-          const secilen = petMod.bul(val.replace("g_al_", ""));
-          const sonuc = petMod.satinAlCekirdek(userId, secilen);
-          if (!sonuc.ok && sonuc.kod === "premium") {
-            return interaction.reply({ embeds: [new EmbedBuilder().setColor("Red")
-              .setTitle(EN ? "💎 Premium required" : "💎 Premium gerekli")
-              .setDescription(EN ? "This is a premium pet. Get premium from the site shop!" : "Bu premium pet. Site mağazasından premium alabilirsin!")], ephemeral: true }).catch(() => {});
-          }
-          if (!sonuc.ok) {
-            return interaction.reply({ embeds: [new EmbedBuilder().setColor("Red")
-              .setTitle(EN ? "💸 Not enough cash" : "💸 Yetersiz bakiye")
-              .setDescription(EN ? `You need **${(secilen?.price || 0).toLocaleString()}**.` : `Gerekli: **${(secilen?.price || 0).toLocaleString()}**.`)], ephemeral: true }).catch(() => {});
-          }
-          ownerLog(interaction.client, new EmbedBuilder().setColor("Gold").setTitle("🐾 Pet Satışı")
-            .setDescription(`**Alan:** ${interaction.user.tag} (\`${userId}\`)\n**Pet:** ${secilen.emoji} **${secilen.name}**\n**Fiyat:** ${secilen.price.toLocaleString()} 💸 (panel)`)
-            .setTimestamp()).catch(() => {});
-          return interaction.reply({ embeds: [new EmbedBuilder().setColor("Gold")
-            .setTitle(EN ? "🎉 Adopted!" : "🎉 Sahiplendin!")
-            .setDescription(`${secilen.emoji} **${secilen.name}** ${EN ? "is now your pet!" : "artık senin petin!"}\n\n${require("../utils").satisDuyuruSatir(EN)}`)],
-            components: [require("../utils").satisDuyuruButon(EN)], ephemeral: true }).catch(() => {});
-        }
-        if (interaction.customId === "g_pet_sat" && val.startsWith("g_sat_")) {
-          const sonuc = petMod.satCekirdek(userId, parseInt(val.replace("g_sat_", ""), 10));
-          if (!sonuc.ok) return interaction.reply({ content: EN ? "Invalid pet." : "Geçersiz pet.", ephemeral: true }).catch(() => {});
-          const { secilen, taban, geri, fark, zarar } = sonuc;
-          return interaction.reply({ embeds: [new EmbedBuilder().setColor(zarar ? "#ef4444" : "#22c55e")
-            .setTitle(zarar ? (EN ? "📉 Sold at a loss..." : "📉 Zararla sattın...") : (EN ? "📈 Sold at a profit!" : "📈 Kârla sattın!"))
-            .setDescription(`${secilen.emoji || "🐾"} **${secilen.name}**\n${EN ? "Base" : "Taban"}: ${taban.toLocaleString()} → ${EN ? "Got" : "Aldın"}: ${geri.toLocaleString()} 💸 (${zarar ? "−" : "+"}${fark.toLocaleString()})`)], ephemeral: true }).catch(() => {});
-        }
-        return;
-      }
-
-      // --- Kupon silme menüsü (sahip paneli select) ---
-      if (interaction.customId === "kupon_sil_menu") {
-        const kod = String((interaction.values && interaction.values[0]) || "").replace("kupon_sil_", "");
-        const { SAHIP_ID } = require("../utils");
-        const { getLangSync } = require("../dil");
-        const EN = getLangSync(interaction.user.id) === "en";
-        if (interaction.user.id !== SAHIP_ID) return interaction.reply({ content: EN ? "Owner only." : "Sadece sahip.", ephemeral: true }).catch(() => {});
-        if (!kod) return interaction.reply({ content: EN ? "Pick a coupon first." : "Önce kupon seç.", ephemeral: true }).catch(() => {});
-        const mevcut = db.fetch(`kupon_${kod}`);
-        if (mevcut === undefined || mevcut === null) return interaction.reply({ content: EN ? "Coupon not found (maybe already deleted)." : "Kupon bulunamadı (belki zaten silinmiş).", ephemeral: true }).catch(() => {});
-        try { db.delete(`kupon_${kod}`); } catch {}
-        try { const l = db.get("kuponListesi") || []; db.set("kuponListesi", l.filter(k => k && k.kod !== kod)); } catch {}
-        try { const { ownerLog } = require("../utils"); ownerLog(interaction.client, `🗑️ **Kupon silindi (panel):** \`${kod}\` (${interaction.user.tag})`).catch(() => {}); } catch {}
-        return interaction.reply({ content: EN ? `Coupon \`${kod}\` deleted. ✅` : `\`${kod}\` kuponu silindi. ✅`, ephemeral: true }).catch(() => {});
-      }
-
-      // --- Ticket kategori seçimi ---
-      if (interaction.customId === "ticket_kategori_sec") {
-        const { acBilet } = require("../komutlar/ticket");
-        const lang = await getLang(interaction.user.id);
-        const guild = interaction.guild;
-        const mevcutId = db.fetch(`ass.${guild.id}.${interaction.user.id}`);
-        if (mevcutId && guild.channels.cache.get(mevcutId)) {
-          return interaction.update({ content: "Zaten açık bir biletin var.", components: [] }).catch(() => {});
-        }
-        // Kategori ID'yi DB'den al (select menü değeri Discord kategori kanal ID'si değil, anahtar)
-        const kategoriId = db.fetch(`ticket_kategori.${guild.id}`);
-        await interaction.deferReply({ ephemeral: true }).catch(() => {});
-        const kanal = await acBilet(interaction.client, guild, interaction.user, "destek", lang, null, kategoriId);
-        if (kanal) return interaction.editReply({ content: `Biletin açıldı: ${kanal}`, components: [] }).catch(() => {});
-        return interaction.editReply({ content: "Hata oluştu.", components: [] }).catch(() => {});
-      }
-    }
-
-    if (interaction.isButton()) {
-      const id = interaction.customId || "";
-
-      // --- Pet panel butonları (Sahiplen / Sat / Petlerim) ---
-      if (id === "pet_al_menu" || id === "pet_sat_menu" || id === "pet_liste") {
-        const { getLangSync } = require("../dil");
-        const petMod = require("../komutlar/pet");
-        const lang = getLangSync(interaction.user.id);
-        const EN = lang === "en";
-        const userId = interaction.user.id;
-        const DJ = require("discord.js");
-        if (id === "pet_liste") {
-          const userPets = db.get(`pets_${userId}`) || [];
-          if (!userPets.length) return interaction.reply({ content: EN ? "You have no pets yet." : "Henüz petin yok.", ephemeral: true }).catch(() => {});
-          return interaction.reply({ embeds: [new EmbedBuilder().setColor("Gold")
-            .setTitle(EN ? "📋 Your Pets" : "📋 Petlerin")
-            .setDescription(userPets.map((p, i) => `${i + 1}. ${p.emoji || "🐾"} **${p.name}** — ${Number(p.price) || 0} 💸`).join("\n").slice(0, 3900))],
-            ephemeral: true }).catch(() => {});
-        }
-        if (id === "pet_al_menu") {
-          const opts = petMod.katalog().map(p => new DJ.StringSelectMenuOptionBuilder()
-            .setLabel(`${p.name} — ${p.price.toLocaleString()} 💸`.slice(0, 100))
-            .setValue(`g_al_${p.name}`).setEmoji(p.emoji)
-            .setDescription(String(p.rarity).slice(0, 100)));
-          return interaction.reply({ embeds: [new EmbedBuilder().setColor("Gold")
-            .setTitle(EN ? "🛒 Adopt a Pet" : "🛒 Pet Sahiplen")
-            .setDescription(EN ? "Pick a pet from the menu below." : "Aşağıdaki menüden bir pet seç.")],
-            components: [new DJ.ActionRowBuilder().addComponents(
-              new DJ.StringSelectMenuBuilder().setCustomId("g_pet_al").setPlaceholder(EN ? "Pick a pet..." : "Pet seç...").addOptions(opts))],
-            ephemeral: true }).catch(() => {});
-        }
-        // pet_sat_menu
-        const userPets = db.get(`pets_${userId}`) || [];
-        if (!userPets.length) return interaction.reply({ content: EN ? "You have no pets to sell." : "Satacak petin yok.", ephemeral: true }).catch(() => {});
-        const opts2 = userPets.slice(0, 24).map((p, i) => new DJ.StringSelectMenuOptionBuilder()
-          .setLabel(`${p.emoji || "🐾"} ${p.name}`.slice(0, 100)).setValue(`g_sat_${i + 1}`)
-          .setDescription(`${Number(p.price) || 0} 💸`.slice(0, 100)));
-        return interaction.reply({ embeds: [new EmbedBuilder().setColor("Gold")
-          .setTitle(EN ? "💼 Sell a Pet (±10%)" : "💼 Pet Sat (±%10)")
-          .setDescription(EN ? "Pick a pet to sell." : "Satılacak peti seç.")],
-          components: [new DJ.ActionRowBuilder().addComponents(
-            new DJ.StringSelectMenuBuilder().setCustomId("g_pet_sat").setPlaceholder(EN ? "Pick..." : "Seç...").addOptions(opts2))],
-          ephemeral: true }).catch(() => {});
-      }
-
-      // --- Veri işleme onayı ---
-      if (id === "onay_evet" || id === "onay_hayir") {
-        const ulang = await getLang(interaction.user.id);
-        /* Dil seçmeden kabul YOK — önce dil menüsünden dil seçilmeli */
-        if (id === "onay_evet" && !hasLang(interaction.user.id)) {
-          return interaction.reply({
-            content: ulang === "en"
-              ? "⚠️ Pick your language first from the menu above, then press Accept. (r!dil)"
-              : "⚠️ Önce yukarıdaki menüden dilini seç, sonra Kabul Et'e bas. (r!dil)",
-            ephemeral: true,
-          }).catch(() => {});
-        }
-        if (id === "onay_evet") {
-          setConsent(interaction.user.id, true);
-          try { const { ownerLog } = require("../utils"); ownerLog(interaction.client, `✅ **Onay verildi:** ${interaction.user.tag} (\`${interaction.user.id}\`)`).catch(() => {}); } catch {}
-          // Onay veren kullanıcıya docs linkli karşılama DM'i (kendi dilinde)
-          try {
-            const { EmbedBuilder: EB2 } = require("discord.js");
-            const dmE = new EB2().setColor("Green")
-              .setTitle(ulang === "en" ? "🎉 Welcome to RiseBunny!" : "🎉 RiseBunny'ye Hoş Geldin!")
-              .setDescription(
-                (ulang === "en"
-                  ? `Thanks for accepting! Everything in one place:\n📄 **Docs & commands:** https://risebunny.vercel.app/docs.html\n\nType \`r!yardım\` anywhere to start!`
-                  : `Onayın için teşekkürler! Her şey tek sayfada:\n📄 **Dökümantasyon & komutlar:** https://risebunny.vercel.app/docs.html\n\nBaşlamak için herhangi bir yerde \`r!yardım\` yaz!`));
-            await interaction.user.send({ embeds: [dmE] }).catch(() => {});
-          } catch {}
-          return interaction.reply({ content: t(ulang, "onay.kabulOk"), ephemeral: true });
-        }
-        setConsent(interaction.user.id, false);
-        /* Onay verilmediği sürece komutlar kilitli kalır; panel tekrar sunulur. */
-        try {
-          const { dilPaneli } = require("../komutlar/dil");
-          const { PREFIX } = require("../utils");
-          await interaction.reply({
-            content: t(ulang, "onay.redKilit"),
-            ...dilPaneli(process.env.PREFIX || PREFIX, { isOwner: false, userNeedsLang: false, guildNeedsLang: false }),
-            ephemeral: true
-          }).catch(() => {});
-        } catch {
-          await interaction.reply({ content: t(ulang, "onay.redBilgi"), ephemeral: true }).catch(() => {});
-        }
-        return undefined;
-      }
-
-      // --- Bilgi sistemi: veri silme talebi kısayolu ---
-      if (id === "bilgi_verisil") {
-        const { getLangSync } = require("../dil");
-        const EN = getLangSync(interaction.user.id) === "en";
-        return interaction.reply({
-          content: EN ? "To request deletion of your data, type `r!verisil` in any server channel." : "Verilerinin silinmesini talep etmek için herhangi bir sunucu kanalına `r!verisil` yaz.",
-          ephemeral: true,
-        }).catch(() => {});
-      }
-
-      // --- Veri silme talebi butonları (sahip onayı + kullanıcı son onayı) ---
-      if (id.startsWith("del_approve_") || id.startsWith("del_reject_") || id.startsWith("del_final_yes_") || id.startsWith("del_final_no_")) {
-        const { handleDeletionButton } = require("../komutlar/verisil");
-        return handleDeletionButton(interaction, interaction.client);
-      }
-
-      // --- Raid koruma butonları (Aç / Kapat) ---
-      if (id === "raid_btn_ac" || id === "raid_btn_kapat") {
-        const lang = await getLang(interaction.user.id);
-        const isOwner = Boolean(interaction.guild && interaction.guild.ownerId === interaction.user.id);
-        if (!isOwner && !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
-          return interaction.reply({ content: t(lang, "sistem.yonetici"), ephemeral: true });
-        }
-        const key = `raidkoruma_${interaction.guild.id}`;
-        const { PREFIX } = require("../utils");
-        const prefix = process.env.PREFIX || PREFIX;
-
-        if (id === "raid_btn_ac") {
-          const current = db.fetch(key);
-          const esik = current?.esik || 5;
-          const rol = current?.rol || null;
-          db.set(key, { durum: "açık", esik, rol });
-
-          const embed = new EmbedBuilder()
-            .setColor("Green")
-            .setTitle(t(lang, "raid.embedBaslik"))
-            .setDescription(t(lang, "raid.durumAcik", { esik, rol: rol ? `<@&${rol}>` : t(lang, "raid.rolYok"), prefix }))
-            .setFooter({ text: `RiseBunny • ${prefix}raid` })
-            .setTimestamp();
-
-          const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId("raid_btn_ac").setLabel(t(lang, "raid.butonAc")).setStyle(ButtonStyle.Success).setEmoji("🛡️").setDisabled(true),
-            new ButtonBuilder().setCustomId("raid_btn_kapat").setLabel(t(lang, "raid.butonKapat")).setStyle(ButtonStyle.Danger).setEmoji("❌").setDisabled(false)
-          );
-
-          return interaction.update({ embeds: [embed], components: [row] }).catch(() => {});
-        } else if (id === "raid_btn_kapat") {
-          try { db.delete(key); } catch {}
-
-          const embed = new EmbedBuilder()
-            .setColor("Red")
-            .setTitle(t(lang, "raid.embedBaslik"))
-            .setDescription(t(lang, "raid.durumKapali", { prefix }))
-            .setFooter({ text: `RiseBunny • ${prefix}raid` })
-            .setTimestamp();
-
-          const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId("raid_btn_ac").setLabel(t(lang, "raid.butonAc")).setStyle(ButtonStyle.Success).setEmoji("🛡️").setDisabled(false),
-            new ButtonBuilder().setCustomId("raid_btn_kapat").setLabel(t(lang, "raid.butonKapat")).setStyle(ButtonStyle.Danger).setEmoji("❌").setDisabled(true)
-          );
-
-          return interaction.update({ embeds: [embed], components: [row] }).catch(() => {});
-        }
-      }
-
-      // --- Engelle kapsam seçimi (çevirili) ---
-      if (id.startsWith("engel_sunucu_") || id.startsWith("engel_kanal_")) {
-        const { getLangSync, t } = require("../dil");
-        const parts = id.split("_");
-        const gid = parts[2];
-        const guild = interaction.guild;
-        if (!guild || guild.id !== gid) {
-          const l0 = getLangSync(interaction.user.id);
-          return interaction.reply({ content: t(l0, "ortak.hata"), ephemeral: true }).catch(() => {});
-        }
-        if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
-          const l0 = getLangSync(interaction.user.id);
-          return interaction.reply({ content: t(l0, "ortak.yoneticiGerek"), ephemeral: true }).catch(() => {});
-        }
-        const isServer = id.startsWith("engel_sunucu_");
-        const kanalId = isServer ? null : parts[3];
-        const ulang = getLangSync(interaction.user.id);
-        db.set(`engel_${gid}`, { kapsam: isServer ? "sunucu" : "kanal", kanalId, engelleyen: interaction.user.id, ulang, tarih: Date.now() });
-        const e = new EmbedBuilder().setColor("Red")
-          .setTitle(t(ulang, "engelle.baslik"))
-          .setDescription(isServer ? t(ulang, "engelle.acildiSunucu") : t(ulang, "engelle.acildiKanal"));
-        try { const { ownerLog } = require("../utils"); ownerLog(interaction.client, `🚫 **Engel açıldı:** **${guild.name}** (${gid}) — ${isServer ? "sunucu" : "kanal " + kanalId} — ${interaction.user.tag}`).catch(() => {}); } catch {}
-        return interaction.update({ embeds: [e], components: [] }).catch(() => {});
-      }
-
-      // --- Ticket aç (panel) ---
-      if (id === "ticket_ac") {
-        const { acBilet, TICKET_KATEGORILER } = require("../komutlar/ticket");
-        const { ActionRowBuilder, StringSelectMenuBuilder } = require("discord.js");
-        const lang = await getLang(interaction.user.id);
-        const guild = interaction.guild;
-        const mevcutId = db.fetch(`ass.${guild.id}.${interaction.user.id}`);
-        if (mevcutId && guild.channels.cache.get(mevcutId)) {
-          return interaction.reply({ content: "Zaten açık bir biletin var.", ephemeral: true }).catch(() => {});
-        }
-        // Kategori seçimi için select menü gönder
-        const row = new ActionRowBuilder().addComponents(
-          new StringSelectMenuBuilder()
-            .setCustomId("ticket_kategori_sec")
-            .setPlaceholder("Ticket kategorisini seçin:")
-            .addOptions(TICKET_KATEGORILER.map(k => ({
-              label: k.label,
-              value: k.id,
-              description: k.description,
-              emoji: k.emoji
-            })))
-        );
-        return interaction.reply({ content: "🎫 Bilet kategorisini seçin:", components: [row], ephemeral: true }).catch(() => {});
-      }
-
-      // --- Ticket kapat / sil ---
-      if (id.startsWith("ticket_kapat_") || id.startsWith("ticket_sil_")) {
-        const kanalId = id.split("_").pop();
-        const kanal = interaction.guild.channels.cache.get(kanalId) || interaction.channel;
-        const lang = await getLang(interaction.user.id);
-        if (!kanal) return interaction.reply({ content: t(lang, "ortak.hata"), ephemeral: true });
-        if (id.startsWith("ticket_kapat_")) {
-          await kanal.permissionOverwrites.edit(interaction.guild.roles.everyone, { ViewChannel: false }).catch(() => {});
-          const opener = db.fetch(`ticket.${interaction.guild.id}.${kanal.id}`)?.acan;
-          if (opener) {
-            const uye = await interaction.guild.members.fetch(opener).catch(() => null);
-            if (uye) await kanal.permissionOverwrites.edit(uye, { ViewChannel: true, SendMessages: false }).catch(() => {});
-          }
-          await kanal.setName(`closed-${kanal.name.slice(0, 80)}`).catch(() => {});
-          await ownerLog(interaction.client, new EmbedBuilder().setColor("Grey").setDescription(`🔒 Bilet kapatıldı: **${interaction.guild.name}** | ${interaction.user.tag} | #${kanal.name}`));
-          return interaction.reply({ content: t(lang, "ticket.kapatildi", { kullanici: `${interaction.user}` }) });
-        } else {
-          await interaction.reply({ content: t(lang, "ticket.silinecek") });
-          const kayit = db.fetch(`ticket.${interaction.guild.id}.${kanal.id}`);
-          if (kayit?.acan && typeof db.delete === "function") {
-            try { db.delete(`ass.${interaction.guild.id}.${kayit.acan}`); db.delete(`ticket.${interaction.guild.id}.${kanal.id}`); } catch {}
-          }
-          await ownerLog(interaction.client, new EmbedBuilder().setColor("Red").setDescription(`⛔ Bilet silindi: **${interaction.guild.name}** | ${interaction.user.tag} | #${kanal.name}`));
-          setTimeout(() => kanal.delete().catch(() => {}), 5000);
-          return;
-        }
-      }
-
-      // --- Kick onay ---
-      if (id.startsWith("kick_evet_") || id === "kick_hayir") {
-        if (id === "kick_hayir") {
-          await interaction.update({ content: "İşlem iptal oldu!", embeds: [], components: [] }).catch(() => {});
-          return;
-        }
-        const [, , hedefId, isteyenId] = id.split("_");
-        if (interaction.user.id !== isteyenId) return interaction.reply({ content: "Bu onayı sadece komutu kullanan kişi verebilir.", ephemeral: true });
-        const uye = await interaction.guild.members.fetch(hedefId).catch(() => null);
-        if (!uye || !uye.kickable) return interaction.reply({ content: "Atamıyorum (yetki/rol).", ephemeral: true });
-        try { await uye.kick(`Onaylı kick: ${interaction.user.tag}`); } catch { return interaction.reply({ content: "Kick başarısız.", ephemeral: true }); }
-        await ownerLog(interaction.client, new EmbedBuilder().setColor("Orange").setDescription(`👢 Kick: **${uye.user.tag}** | **${interaction.guild.name}** | Yetkili: ${interaction.user.tag}`));
-        await modLogGonder(interaction.guild, new EmbedBuilder().setColor("Orange").setDescription(`👢 **Kick**\n**Atılan:** ${uye.user.tag} (${uye.id})\n**Yetkili:** ${interaction.user.tag}`).setTimestamp());
-        return interaction.update({ content: `✅ **${uye.user.tag}** sunucudan atıldı!`, embeds: [], components: [] }).catch(() => {});
-      }
-
-      // --- Ban onayı ---
-      if (id.startsWith("ban_evet_") || id === "ban_hayir") {
-        if (id === "ban_hayir") {
-          return interaction.update({ content: "İşlem iptal oldu!", embeds: [], components: [] }).catch(() => {});
-        }
-        const [, , hedefId, isteyenId] = id.split("_");
-        if (interaction.user.id !== isteyenId) return interaction.reply({ content: "Bu onayı sadece komutu kullanan kişi verebilir.", ephemeral: true });
-        const uye = await interaction.guild.members.fetch(hedefId).catch(() => null);
-        if (!uye || !uye.bannable) return interaction.reply({ content: "Banlayamıyorum (yetki/rol).", ephemeral: true });
-        try { await uye.ban({ reason: `Onaylı ban: ${interaction.user.tag}` }); } catch { return interaction.reply({ content: "Ban başarısız.", ephemeral: true }); }
-        await ownerLog(interaction.client, new EmbedBuilder().setColor("Red").setDescription(`🔨 Ban: **${uye.user.tag}** | **${interaction.guild.name}** | Yetkili: ${interaction.user.tag}`));
-        await modLogGonder(interaction.guild, new EmbedBuilder().setColor("Red").setDescription(`🔨 **Ban**\n**Yasaklanan:** ${uye.user.tag} (${uye.id})\n**Yetkili:** ${interaction.user.tag}`).setTimestamp());
-        return interaction.update({ content: `✅ **${uye.user.tag}** sunucudan banlandı!`, embeds: [], components: [] }).catch(() => {});
-      }
-
-      // --- Kupon kullan onayı (v2 format: para/pet/premium) ---
-      if (id.startsWith("kupon_evet_")) {
-        const parca = id.split("_");
-        const isteyenId = parca[parca.length - 1];
-        const kod = parca.slice(2, -1).join("_");
-        if (interaction.user.id !== isteyenId) return interaction.reply({ content: "Bu onayı sadece komutu kullanan kişi verebilir.", ephemeral: true });
-        const lang = await getLang(interaction.user.id);
-        const EN = lang === "en";
-        // Merkezi okuma: eski format + bozuk bitis otomatik onarılır
-        const { getKupon } = require("../utils");
-        const kupon = getKupon(kod);
-        if (!kupon) return interaction.update({ content: EN ? "Invalid coupon." : "Geçersiz kupon.", embeds: [], components: [] }).catch(() => {});
-        if (kupon.yer === "site") return interaction.update({ content: EN ? "🌐 This coupon is website-only (Discord login required)." : "🌐 Bu kupon sadece sitede kullanılabilir (Discord girişi şart).", embeds: [], components: [] }).catch(() => {});
-        if (kupon.bitis && Date.now() > kupon.bitis) return interaction.update({ content: EN ? "Expired coupon." : "Kuponun süresi dolmuş.", embeds: [], components: [] }).catch(() => {});
-        if (kupon.limit && (kupon.calismalar || 0) >= kupon.limit) return interaction.update({ content: EN ? "Usage limit reached." : "Kullanım limitine ulaşılmış.", embeds: [], components: [] }).catch(() => {});
-        if (db.fetch(`kupon_kullandi_${kod}_${interaction.user.id}`)) return interaction.update({ content: EN ? "You already used this coupon." : "Bu kuponu zaten kullandın.", embeds: [], components: [] }).catch(() => {});
-        let mesaj = "";
-        if (kupon.tip === "premium") {
-          const gun = Number(kupon.premiumGun) || 30;
-          const U = require("../utils");
-          U.addPremium(interaction.user.id, gun * 24 * 60 * 60 * 1000);
-          mesaj = EN ? `💎 ${gun} days of premium activated!` : `💎 ${gun} gün premium aktif!`;
-        } else if (kupon.tip === "pet") {
-          const pets = db.get(`pets_${interaction.user.id}`) || [];
-          pets.push({ name: kupon.petAd || "Tavşan", emoji: kupon.petEmoji || "🐰", rarity: "coupon", price: Number(kupon.petFiyat) || 50000 });
-          db.set(`pets_${interaction.user.id}`, pets);
-          mesaj = EN ? `${kupon.petEmoji || "🐰"} ${kupon.petAd || "Tavşan"} joined your pets!` : `${kupon.petEmoji || "🐰"} ${kupon.petAd || "Tavşan"} petlerine eklendi!`;
-        } else {
-          const miktar = Number(kupon.miktar) || 0;
-          db.add(`para_${interaction.user.id}`, miktar);
-          mesaj = EN ? `Congratulations, you earned ${miktar.toLocaleString()} 💸!` : `Tebrikler, ${miktar.toLocaleString()} 💸 kazandın!`;
-        }
-        db.set(`kupon_kullandi_${kod}_${interaction.user.id}`, Date.now());
-        db.set(`kupon_${kod}`, { ...kupon, calismalar: (kupon.calismalar || 0) + 1 });
-        return interaction.update({ content: mesaj, embeds: [], components: [] }).catch(() => {});
-      }
-      if (id === "kupon_hayir") {
-        return interaction.update({ content: "İşlem iptal edildi.", embeds: [], components: [] }).catch(() => {});
-      }
-      // --- V2.0 kupon bilgi butonu (yardım menüsü) ---
-      if (id === "kupon_bilgi_v2") {
-        const lang = await getLang(interaction.user.id);
-        const EN = lang === "en";
-        const { EmbedBuilder } = require("discord.js");
-        const e = new EmbedBuilder().setColor("Gold").setTitle(EN ? "🎟️ RISE-V2 Launch Coupon" : "🎟️ RISE-V2 Yayın Kuponu")
-          .setDescription(EN
-            ? "**250,000 RiseBunny Cash** — permanent, one per account.\n\n**How to redeem:**\n1️⃣ Go to **risebunny.vercel.app**\n2️⃣ Sign in with **Discord** (top right)\n3️⃣ Open **RiseBunny Bot → Hesabım & Mağaza**\n4️⃣ Enter `RISE-V2` in the coupon box"
-            : "**250.000 RiseBunny Cash** — süresiz, hesap başına tek.\n\n**Nasıl kullanılır:**\n1️⃣ **risebunny.vercel.app**'e gir\n2️⃣ Sağ üstten **Discord ile giriş** yap\n3️⃣ **RiseBunny Bot → Hesabım & Mağaza** bölümünü aç\n4️⃣ Kupon kutusuna `RISE-V2` yaz");
-        return interaction.reply({ embeds: [e], ephemeral: true }).catch(() => {});
-      }
-      // (Not: kupon_sil_menu select'i yukarıdaki isStringSelectMenu bloğunda ele alınır.)
-
-      // --- Kupon sil (sahip, eski buton yolu) ---
-      if (id.startsWith("kupon_sil_")) {
-        const kod = id.slice("kupon_sil_".length);
-        const { SAHIP_ID } = require("../utils");
-        if (interaction.user.id !== SAHIP_ID) return interaction.reply({ content: "Yetkin yok.", ephemeral: true });
-        try { db.delete(`kupon_${kod}`); } catch {}
-        try { const l = db.get("kuponListesi") || []; db.set("kuponListesi", l.filter(k => k.kod !== kod)); } catch {}
-        return interaction.update({ content: `Kupon \`${kod}\` silindi.`, embeds: [], components: [] }).catch(() => {});
-      }
-
-      // --- Market satın alma onayı ---
-      if (id.startsWith("market_evet_")) {
-        const [, , ilanId, isteyenId] = id.split("_");
-        if (interaction.user.id !== isteyenId) return interaction.reply({ content: "Bu onayı sadece komutu kullanan kişi verebilir.", ephemeral: true });
-        const lang = await getLang(interaction.user.id);
-        const EN = lang === "en";
-        const liste = db.get("marketListesi") || [];
-        const ilan = liste.find(l => l.id === Number(ilanId));
-        if (!ilan) return interaction.update({ content: EN ? "Listing not found." : "İlan bulunamadı.", embeds: [], components: [] }).catch(() => {});
-        const bakiye = Number(db.fetch(`para_${interaction.user.id}`) || 0);
-        if (bakiye < ilan.fiyat) return interaction.update({ content: EN ? "Insufficient balance." : "Yetersiz bakiye.", embeds: [], components: [] }).catch(() => {});
-        db.subtract(`para_${interaction.user.id}`, ilan.fiyat);
-        db.add(`para_${ilan.satanId}`, ilan.fiyat);
-        const aliciPets = db.get(`pets_${interaction.user.id}`) || [];
-        aliciPets.push(ilan.pet);
-        db.set(`pets_${interaction.user.id}`, aliciPets);
-        db.set("marketListesi", liste.filter(l => l.id !== Number(ilanId)));
-        ownerLog(interaction.client, new EmbedBuilder().setColor("Gold").setTitle("💱 Pazar Satışı")
-          .setDescription(`**Alıcı:** <@${interaction.user.id}> (\`${interaction.user.id}\`)\n**Satıcı:** <@${ilan.satanId}> (\`${ilan.satanId}\`)\n**Pet:** ${ilan.pet.emoji} **${ilan.pet.name}**\n**Fiyat:** ${ilan.fiyat.toLocaleString()} 💸`)
-          .setTimestamp()).catch(() => {});
-        return interaction.update({ content: EN ? `You bought ${ilan.pet.emoji} **${ilan.pet.name}** for ${ilan.fiyat.toLocaleString()} 💸!` : `${ilan.pet.emoji} **${ilan.pet.name}** petini ${ilan.fiyat.toLocaleString()} 💸 karşılığında satın aldın!`, embeds: [], components: [] }).catch(() => {});
-      }
-      if (id === "market_hayir") {
-        return interaction.update({ content: "İşlem iptal edildi.", embeds: [], components: [] }).catch(() => {});
-      }
-
-      // --- Bug bildirimi: sahip kabul (250k ödül + teşekkür DM'i) / red (hiçbir şey) ---
-      if (id.startsWith("bug_kabul_") || id.startsWith("bug_red_")) {
-        const { SAHIP_ID } = require("../utils");
-        const bLang = await getLang(interaction.user.id);
-        const bEN = bLang === "en";
-        if (interaction.user.id !== SAHIP_ID) {
-          return interaction.reply({ content: bEN ? "Owner only." : "Bu işlemi sadece sahip yapabilir.", ephemeral: true }).catch(() => {});
-        }
-        const kayitId = id.split("_").slice(2).join("_");
-        const kayit = db.fetch(`bug_${kayitId}`);
-        if (!kayit) return interaction.reply({ content: bEN ? "Report not found." : "Bildirim bulunamadı.", ephemeral: true }).catch(() => {});
-        if (kayit.durum !== "bekliyor") {
-          return interaction.reply({ content: bEN ? "This report is already resolved." : "Bu bildirim zaten sonuçlandırıldı.", ephemeral: true }).catch(() => {});
-        }
-        const bugMod = require("../komutlar/bug");
-        const kabul = id.startsWith("bug_kabul_");
-        if (kabul) {
-          const odul = Number(bugMod.BUG_ODUL) || 250000;
-          db.add(`para_${kayit.userId}`, odul);
-          db.set(`bug_${kayitId}`, { ...kayit, durum: "kabul", odul, sonuclanmaAt: Date.now(), kararVeren: interaction.user.id });
-          try {
-            const u = await interaction.client.users.fetch(String(kayit.userId).replace(/\D/g, "")).catch(() => null);
-            if (u) {
-              await u.send({ embeds: [new EmbedBuilder().setColor("Green")
-                .setTitle("🐞 Bug bildirimin kabul edildi!")
-                .setDescription(`Teşekkürler! **${odul.toLocaleString()} 💸** bakiyene eklendi.\n\n**Bildirimin:**\n${String(kayit.aciklama).slice(0, 1000)}`)
-                .setFooter({ text: "RiseBunny • bug" }).setTimestamp()] }).catch(() => {});
+module.exports = {
+    name: Events.InteractionCreate,
+    async execute(interaction) {
+        const lang = getGuildSync(interaction.guild?.id);
+        
+        // Config onay/red butonları
+        if (interaction.isButton()) {
+            const customId = interaction.customId;
+            
+            if (customId.startsWith("config_accept_") || customId.startsWith("config_reject_")) {
+                if (!U.isAdmin(interaction.member)) {
+                    return interaction.reply({ content: t(lang, "onlyAdmins"), ephemeral: true });
+                }
+                
+                const accept = customId.startsWith("config_accept_");
+                const configId = customId.split("_").pop();
+                
+                const configs = db.get("pendingConfigs") || [];
+                const idx = configs.findIndex(c => c.id === configId);
+                if (idx === -1) {
+                    return interaction.reply({ content: t(lang, "config.notFound"), ephemeral: true });
+                }
+                
+                const config = configs[idx];
+                const newStatus = accept ? "approved" : "rejected";
+                config.status = newStatus;
+                config.reviewedBy = interaction.user.id;
+                config.reviewedAt = Date.now();
+                if (!accept) config.rejectedReason = "Sahip reddi";
+                
+                // Eğer onaylandıysa, approvedConfigs'e taşı
+                if (accept) {
+                    const approved = db.get("approvedConfigs") || [];
+                    approved.push(config);
+                    db.set("approvedConfigs", approved);
+                }
+                
+                // Listeden kaldır
+                const pending = db.get("pendingConfigs") || [];
+                pending.splice(pending.findIndex(c => c.id === configId), 1);
+                db.set("pendingConfigs", pending);
+                
+                // Log mesajını güncelle
+                try {
+                    const log = db.get(`configLog_${configId}`);
+                    if (log) {
+                        const channel = interaction.client.channels.cache.get(log.channelId);
+                        if (channel) {
+                            const msg = await channel.messages.fetch(log.messageId).catch(() => null);
+                            if (msg) {
+                                const newEmbed = Discord.EmbedBuilder.from(msg.embeds[0])
+                                    .setColor(accept ? "Green" : "Red")
+                                    .setFields(...msg.embeds[0].fields.map(f => {
+                                        if (f.name === "Durum") return { name: f.name, value: accept ? "✅ Onaylandı" : "❌ Reddedildi", inline: true };
+                                        return f;
+                                    }))
+                                    .addFields({ name: "Yetkili", value: `<@${interaction.user.id}>`, inline: true });
+                                await msg.edit({ embeds: [newEmbed], components: [] });
+                            }
+                        }
+                    }
+                } catch {}
+                
+                // Yükleyene DM gönder
+                try {
+                    const user = await interaction.client.users.fetch(config.uploader).catch(() => null);
+                    if (user) {
+                        await user.send({
+                            embeds: [new Discord.EmbedBuilder()
+                                .setColor(accept ? "Green" : "Red")
+                                .setTitle(accept ? "✅ Config Onaylandı" : "❌ Config Reddedildi")
+                                .setDescription(accept
+                                    ? `**${config.fileName}** configin onaylandı ve Vape configinde görünüyor.`
+                                    : `**${config.fileName}** configin reddedildi. Sebep: Sahip reddi`)
+                                .setTimestamp()
+                            ]}).catch(() => {});
+                    }
+                } catch {}
+                
+                return interaction.update({ embeds: [new Discord.EmbedBuilder()
+                    .setColor(accept ? "Green" : "Red")
+                    .setTitle(accept ? "✅ Config Onaylandı" : "❌ Config Reddedildi")
+                    .setDescription(accept
+                        ? `\`${config.fileName}\` configi onaylandı ve Vape configinde görünüyor.`
+                        : `\`${config.fileName}\` configi reddedildi. Sebep: Sahip reddi`)
+                    .addFields({ name: "Yetkili", value: `<@${interaction.user.id}>`, inline: true })
+                    .setTimestamp()
+                ], components: [] });
             }
-          } catch {}
-          ownerLog(interaction.client, `✅ **Bug kabul edildi:** \`${kayitId}\` (<@${kayit.userId}>) — +${odul.toLocaleString()} 💸`).catch(() => {});
-        } else {
-          db.set(`bug_${kayitId}`, { ...kayit, durum: "red", sonuclanmaAt: Date.now(), kararVeren: interaction.user.id });
-          ownerLog(interaction.client, `✖️ **Bug reddedildi:** \`${kayitId}\` (<@${kayit.userId}>)`).catch(() => {});
-        }
-        return interaction.update({ embeds: [bugMod.bugEmbed(kayit, bLang, kabul ? "kabul" : "red")], components: [] }).catch(() => {});
-      }
-
-      // --- Veri silme talebi: sahip onayı (emin misin) / reddi (sebepli) ---
-      const SILME_YETKI = [require("../utils").SAHIP_ID, "1310366324731547798"];
-      /* Sahip logundaki talep embedini "işlem yapıldı" olarak işaretler ve
-         butonları kapatır — aynı talep iki kez işlenemez. */
-      const silmeLogunuIsle = async (cli, rec, docId, sonuc, sebep, isleyen) => {
-        try {
-          const kanalId = String((rec && rec.logChannelId) || "");
-          const mesajId = String((rec && rec.logMessageId) || "");
-          let kanal = kanalId ? cli.channels.cache.get(kanalId) : null;
-          if (!kanal && kanalId) kanal = await cli.channels.fetch(kanalId).catch(() => null);
-          if (!kanal) {
-            const U2 = require("../utils");
-            kanal = cli.channels.cache.get(U2.OWNER_LOG) || await cli.channels.fetch(U2.OWNER_LOG).catch(() => null);
-          }
-          if (!kanal || !mesajId) return false;
-          const msg = await kanal.messages.fetch(mesajId).catch(() => null);
-          if (!msg) return false;
-          const eski = (msg.embeds && msg.embeds[0]) || null;
-          const e = new EmbedBuilder()
-            .setColor(sonuc === "kabul" ? "Green" : "Red")
-            .setTitle(sonuc === "kabul" ? "✅ İşlem yapıldı (kabul edildi)" : "❌ İşlem yapıldı (reddedildi)")
-            .setDescription(((eski && eski.description) || `Talep: \`${docId}\``).slice(0, 3500))
-            .addFields(
-              { name: "Talep", value: `\`${docId}\``, inline: true },
-              { name: "Kapsam", value: rec.kapsam === "ikisi" ? "Bot + Site" : rec.kapsam === "bot" ? "Sadece Bot" : "Sadece Site", inline: true },
-              { name: "Sonuç", value: sonuc === "kabul" ? "Kabul — veriler silindi, kullanıcıya DM atıldı." : `Ret — sebep: ${String(sebep || "Belirtilmedi").slice(0, 200)}`, inline: false },
-            )
-            .setFooter({ text: `İşleyen: ${isleyen || "?"} • ${new Date().toLocaleString("tr-TR")}` })
-            .setTimestamp();
-          await msg.edit({ embeds: [e], components: [] }).catch(() => {});
-          return true;
-        } catch { return false; }
-      };
-      if (id.startsWith("sil_onay_") || id.startsWith("sil_evet_") || id.startsWith("sil_red_") || id === "sil_vazgec") {
-        if (!SILME_YETKI.includes(interaction.user.id))
-          return interaction.reply({ content: "Yetkin yok.", ephemeral: true }).catch(() => {});
-        const docId = id.startsWith("sil_vazgec") ? null : id.split("_").slice(2).join("_");
-        if (id.startsWith("sil_onay_")) {
-          const { ActionRowBuilder: ARB2, ButtonBuilder: BB2, ButtonStyle: BS2 } = require("discord.js");
-          const row = new ARB2().addComponents(
-            new BB2().setCustomId(`sil_evet_${docId}`).setLabel("Evet, eminim — SİL").setStyle(BS2.Danger).setEmoji("🗑️"),
-            new BB2().setCustomId("sil_vazgec").setLabel("Vazgeç").setStyle(BS2.Secondary)
-          );
-          return interaction.reply({ content: `⚠️ **EMİN MİSİN?** \`${docId}\` talebindeki TÜM veriler kalıcı silinecek.`, components: [row], ephemeral: true }).catch(() => {});
-        }
-        if (id === "sil_vazgec") {
-          return interaction.reply({ content: "Vazgeçildi.", ephemeral: true }).catch(() => {});
-        }
-        if (id.startsWith("sil_red_")) {
-          const mevcut = db.fetch(`silme_${docId}`) || {};
-          if (mevcut.durum && mevcut.durum !== "bekliyor") {
-            await silmeLogunuIsle(interaction.client, mevcut, docId, mevcut.durum === "onaylandi" ? "kabul" : "red", mevcut.sebep, interaction.user.tag);
-            return interaction.reply({ content: "Bu talep zaten işlenmiş.", ephemeral: true }).catch(() => {});
-          }
-          await interaction.reply({ content: "Red sebebini 60 sn içinde yaz:", ephemeral: true }).catch(() => {});
-          const top = await interaction.channel.awaitMessages({ filter: (m) => SILME_YETKI.includes(m.author.id), max: 1, time: 60000 }).catch(() => null);
-          const sebep = top?.first?.()?.content?.trim().slice(0, 300) || "Belirtilmedi";
-          try { await top?.first?.()?.delete().catch(() => {}); } catch {}
-          const rec = db.fetch(`silme_${docId}`) || {};
-          db.set(`silme_${docId}`, { ...rec, durum: "reddedildi", sebep });
-          try {
-            const u = await interaction.client.users.fetch(String(rec.discordId || "").replace(/\D/g, "")).catch(() => null);
-            if (u) await u.send({ embeds: [new EmbedBuilder().setColor("Red").setTitle("❌ Veri Silme Talebin Reddedildi")
-              .setDescription(`**Sebep:** ${sebep}`).setTimestamp()] }).catch(() => {});
-          } catch {}
-          await silmeLogunuIsle(interaction.client, rec, docId, "red", sebep, interaction.user.tag);
-          ownerLog(interaction.client, `❌ **Silme talebi reddedildi:** \`${docId}\` — Sebep: ${sebep}`).catch(() => {});
-          return interaction.followUp({ content: "Reddedildi + kullanıcıya DM atıldı.", ephemeral: true }).catch(() => {});
-        }
-        if (id.startsWith("sil_evet_")) {
-          const rec = db.fetch(`silme_${docId}`) || {};
-          if (rec.durum && rec.durum !== "bekliyor") {
-            await silmeLogunuIsle(interaction.client, rec, docId, rec.durum === "onaylandi" ? "kabul" : "red", rec.sebep, interaction.user.tag);
-            return interaction.reply({ content: "Bu talep zaten işlenmiş.", ephemeral: true }).catch(() => {});
-          }
-          const uid = String(rec.discordId || "").replace(/\D/g, "").slice(0, 25);
-          if (!uid) return interaction.reply({ content: "Kayıt bulunamadı.", ephemeral: true }).catch(() => {});
-          let n = 0;
-          try {
-            const tum = db.all() || {};
-            const PREF = ["para_", "bankapara_", "iban_", "xp_", "seviye_", "seviyeatlama_", "pets_", "premium_", "vote_", "dmail_", "language_", "afk_", "kupon_kullandi_", "onay_", "yedek_veri_"];
-            for (const k of Object.keys(tum)) {
-              if (PREF.some(p => k.startsWith(p)) && k.endsWith("_" + uid)) { try { db.delete(k); n++; } catch {} }
+            
+            // Config liste sayfalama
+            if (customId.startsWith("configlist_")) {
+                const [, action, pageStr] = customId.split("_");
+                const page = parseInt(pageStr);
+                const newPage = action === "prev" ? page - 1 : page + 1;
+                
+                // Yeni mesaj gönder (sayfa değişti)
+                const pendingConfigs = db.get("pendingConfigs") || [];
+                const allConfigs = [...pendingConfigs].reverse();
+                const perPage = 10;
+                const totalPages = Math.ceil(allConfigs.length / perPage);
+                const currentPage = Math.max(1, Math.min(newPage, totalPages));
+                const start = (currentPage - 1) * perPage;
+                const pageConfigs = allConfigs.slice(start, start + perPage);
+                
+                const embed = new Discord.EmbedBuilder()
+                    .setColor("Blue")
+                    .setTitle("📋 Config Listesi")
+                    .setDescription(pageConfigs.map(c => {
+                        const statusEmoji = c.status === "approved" ? "✅" : c.status === "rejected" ? "❌" : "⏳";
+                        return `${statusEmoji} **#${c.id}** ${c.fileName} — <@${c.uploader}> (\`${c.uploaderName}\`) — ${c.status === "pending" ? "⏳" : c.status === "approved" ? "✅" : "❌"}`;
+                    }).join("\n") || "—")
+                    .setFooter({ text: `Sayfa ${currentPage}/${totalPages} • ${allConfigs.length} config/sayfa` })
+                    .setTimestamp();
+                
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId(`configlist_prev_${currentPage}`).setLabel("◀").setStyle(ButtonStyle.Secondary).setDisabled(currentPage === 1),
+                    new ButtonBuilder().setCustomId(`configlist_next_${currentPage}`).setLabel("▶").setStyle(ButtonStyle.Secondary).setDisabled(currentPage === totalPages)
+                );
+                
+                return interaction.update({ embeds: [embed], components: [row] });
             }
-            const hat = db.get("hatirlaticilar") || [];
-            if (Array.isArray(hat) && hat.some(h => h.userId === uid)) {
-              db.set("hatirlaticilar", hat.filter(h => h.userId !== uid)); n++;
+            
+            // İletişim cevaplama butonu
+            if (customId.startsWith("iletisim_reply_")) {
+                if (!U.isMod(interaction.member)) {
+                    return interaction.reply({ content: t(lang, "onlyMods"), ephemeral: true });
+                }
+                const msgId = customId.split("_").pop();
+                
+                const modal = new ModalBuilder()
+                    .setCustomId(`iletisim_reply_modal_${msgId}`)
+                    .setTitle("İletişim Yanıtı");
+                
+                const replyInput = new TextInputBuilder()
+                    .setCustomId("reply")
+                    .setLabel("Yanıtınız")
+                    .setStyle(TextInputStyle.Paragraph)
+                    .setPlaceholder("Kullanıcıya gönderilecek yanıtı yazın...")
+                    .setRequired(true)
+                    .setMaxLength(2000);
+                
+                modal.addComponents(new ActionRowBuilder().addComponents(replyInput));
+                return interaction.showModal(modal);
             }
+        }
+        
+        // Modal submit - iletisim formu
+        if (interaction.isModalSubmit() && interaction.customId === "iletisim_modal") {
+            const subject = interaction.fields.getTextInputValue("subject");
+            const message = interaction.fields.getTextInputValue("message");
+            const userId = interaction.user.id;
+            
+            // Bot'a gönder (sahip loguna düşecek)
+            await U.sendContactToBot(userId, interaction.user.username, subject, message);
+            
+            return interaction.reply({ 
+                embeds: [new Discord.EmbedBuilder()
+                    .setColor("Green")
+                    .setTitle("✅ Mesaj Gönderildi")
+                    .setDescription("Mesajınız sahiplere iletildi. En kısa sürede size DM ile dönüş yapılır.")
+                ], ephemeral: true });
+        }
+        
+        // Modal submit - iletisim cevap
+        if (interaction.isModalSubmit() && interaction.customId.startsWith("iletisim_reply_modal_")) {
+            if (!U.isMod(interaction.member)) {
+                return interaction.reply({ content: t(lang, "onlyMods"), ephemeral: true });
+            }
+            
+            const msgId = interaction.customId.split("_").pop();
+            const reply = interaction.fields.getTextInputValue("reply");
+            
+            const contact = db.get(`contact_${msgId}`);
+            if (!contact) {
+                return interaction.reply({ content: "Mesaj bulunamadı.", ephemeral: true });
+            }
+            
+            // Kullanıcıya DM gönder
             try {
-              const ayarlar = require("../ayarlar.json");
-              if (Array.isArray(ayarlar.premiumIDs) && ayarlar.premiumIDs.includes(uid)) {
-                ayarlar.premiumIDs = ayarlar.premiumIDs.filter(x => x !== uid);
-                require("fs").writeFileSync("./ayarlar.json", JSON.stringify(ayarlar, null, 2));
-              }
+                const user = await interaction.client.users.fetch(contact.userId).catch(() => null);
+                if (user) {
+                    await user.send({
+                        embeds: [new Discord.EmbedBuilder()
+                            .setColor("Blurple")
+                            .setTitle("📬 RiseBunny Destek Yanıtı")
+                            .setDescription(reply)
+                            .addFields(
+                                { name: "Sizin Mesajınız", value: contact.message.slice(0, 900), inline: false },
+                                { name: "Yanıtlayan Yetkili", value: `<@${interaction.user.id}>`, inline: true }
+                            )
+                            .setTimestamp()
+                        ]});
+                }
+            } catch (e) {
+                console.error("[DM] iletisim yaniti gonderilemedi:", e.message);
+            }
+            
+            // Log güncelle
+            db.set(`contact_${msgId}`, { ...contact, status: "replied", reply, repliedBy: interaction.user.id, repliedAt: Date.now() });
+            
+            // Sahip loguna bildir
+            try {
+                const logChannel = interaction.client.channels.cache.get(U.OWNER_LOG);
+                if (logChannel) {
+                    await logChannel.send({ embeds: [new Discord.EmbedBuilder()
+                        .setColor("Green")
+                        .setTitle("✅ İletişim Yanıtı Gönderildi")
+                        .addFields(
+                            { name: "Kayıt", value: `#${msgId}`, inline: true },
+                            { name: "Kullanıcı", value: `<@${contact.userId}>\n\`${contact.userId}\``, inline: true },
+                            { name: "Yetkili", value: `<@${interaction.user.id}>`, inline: true },
+                            { name: "Orijinal Mesaj", value: contact.message.slice(0, 900) },
+                            { name: "Gönderilen Yanıt", value: reply.slice(0, 900) }
+                        )
+                        .setTimestamp()]);
+                }
             } catch {}
-          } catch {}
-          const kapsam0 = rec.kapsam || "ikisi";
-          /* Site (Firestore) verileri: bot hesabı yetkiliyse doğrudan silinir,
-             değilse kullanıcıya site üzerinden tamamlama adımı anlatılır. */
-          let siteSonuc = { ok: false, silinen: 0, detay: [] };
-          if (kapsam0 === "site" || kapsam0 === "ikisi") {
-            try {
-              const U = require("../utils");
-              siteSonuc = await U.firestoreSil(uid, [`users/${uid}`]);
-            } catch (e) { siteSonuc = { ok: false, silinen: 0, detay: [String(e.message || e)] }; }
-          }
-          db.set(`silme_${docId}`, { ...rec, durum: "onaylandi", sebep: "", siteSilinen: siteSonuc.silinen });
-          const kapsam = kapsam0;
-          const siteSatir = kapsam === "bot"
-            ? ""
-            : siteSonuc.ok
-              ? `\n🌐 **Site verilerin silindi** (${siteSonuc.silinen} kayıt${siteSonuc.detay.length ? ": " + siteSonuc.detay.join(", ") : ""}).`
-              : "\n🌐 **Site verilerin:** sitedeki Hesabım → Veri silme bölümüne girip son onayı ver (tek tık). Bot tarafında otomatik silme yetkisi kapalı.";
-          try {
-            const u = await interaction.client.users.fetch(uid).catch(() => null);
-            if (u) await u.send({ embeds: [new EmbedBuilder().setColor("Green").setTitle("✅ Veri Silme Talebin Kabul Edildi")
-              .setDescription(`**Kapsam:** ${kapsam === "ikisi" ? "Bot + Site" : kapsam === "bot" ? "Sadece Bot" : "Sadece Site"}\n**Bot verilerin silindi** (${n} kayıt).` + siteSatir)
-              .setFooter({ text: "RiseBunny • veri silme" })
-              .setTimestamp()] }).catch(() => {});
-          } catch {}
-          await silmeLogunuIsle(interaction.client, rec, docId, "kabul", "", interaction.user.tag);
-          ownerLog(interaction.client, `🗑️ **Silme onaylandı:** \`${docId}\` (<@${uid}>) — ${n} bot kaydı, ${siteSonuc.silinen} site kaydı silindi, kapsam: ${kapsam}`).catch(() => {});
-          return interaction.reply({ content: `✅ İşlendi: ${n} bot + ${siteSonuc.silinen} site kaydı silindi.`, ephemeral: true }).catch(() => {});
+            
+            return interaction.reply({ content: "✅ Yanıt gönderildi.", ephemeral: true });
         }
-      }
-
-      // --- Blackjack ---
-      if (id.startsWith("bj_cek_") || id.startsWith("bj_kal_")) {
-        const parcalar = id.split("_");
-        const istek = parcalar[2];
-        if (interaction.user.id !== istek) return interaction.reply({ content: "Bu oyun sadece komutu kullanan kişiye aittir.", ephemeral: true });
-        const lang = await getLang(interaction.user.id);
-        const EN = lang === "en";
-        const durum = db.get(`bj_${interaction.user.id}`);
-        if (!durum) return interaction.update({ content: EN ? "No active game." : "Aktif oyun yok.", embeds: [], components: [] }).catch(() => {});
-
-        const kartDegeri = (k) => k.deger === "A" ? 11 : (["J","Q","K"].includes(k.deger) ? 10 : parseInt(k.deger));
-        const elToplam = (el) => { let t = el.reduce((s,k)=>s+kartDegeri(k),0); let a = el.filter(k=>k.deger==="A").length; while(t>21&&a>0){t-=10;a--;} return t; };
-        const elGoster = (el) => el.map(k=>`${k.deger}${k.renk}`).join(" ");
-
-        const bitir = (baslik, aciklama, renk) => {
-          db.delete(`bj_${interaction.user.id}`);
-          return interaction.update({ embeds: [new EmbedBuilder().setColor(renk).setTitle(baslik).setDescription(aciklama)], components: [] }).catch(() => {});
-        };
-
-        if (id.startsWith("bj_cek_")) {
-          durum.oyuncu.push(durum.deste.pop());
-          const toplam = elToplam(durum.oyuncu);
-          if (toplam > 21) {
-            db.subtract(`para_${interaction.user.id}`, durum.miktar);
-            return bitir("🃏 Blackjack", EN ? `You busted (${toplam}) and lost **${durum.miktar.toLocaleString()} 💸**.` : `Bust oldun (${toplam}) ve **${durum.miktar.toLocaleString()} 💸** kaybettin.`, "Red");
-          }
-          if (toplam === 21) {
-            // Otomatik kal -> kurpiyer oynar
-            while (elToplam(durum.kasa) < 17) durum.kasa.push(durum.deste.pop());
-            const kasaT = elToplam(durum.kasa);
-            if (kasaT > 21 || kasaT < toplam) { db.add(`para_${interaction.user.id}`, durum.miktar); return bitir("🃏 Blackjack", EN ? `You won! Dealer: ${kasaT}, You: ${toplam}. **+${durum.miktar.toLocaleString()} 💸**` : `Kazandın! Kurpiyer: ${kasaT}, Sen: ${toplam}. **+${durum.miktar.toLocaleString()} 💸**`, "Green"); }
-            if (kasaT === toplam) { return bitir("🃏 Blackjack", EN ? `Push! Both ${toplam}. Money returned.` : `Berabere! İkisi de ${toplam}. Para iade.`, "Grey"); }
-            db.subtract(`para_${interaction.user.id}`, durum.miktar); return bitir("🃏 Blackjack", EN ? `Dealer wins (${kasaT}). You lost **${durum.miktar.toLocaleString()} 💸**.` : `Kurpiyer kazandı (${kasaT}). **${durum.miktar.toLocaleString()} 💸** kaybettin.`, "Red");
-          }
-          db.set(`bj_${interaction.user.id}`, durum);
-          const e = new EmbedBuilder().setColor("Blue").setTitle("🃏 Blackjack")
-            .setDescription(EN ? `**Your hand:** ${elGoster(durum.oyuncu)} (${toplam})\n**Dealer:** ${elGoster([durum.kasa[0]])} + ?` : `**Elin:** ${elGoster(durum.oyuncu)} (${toplam})\n**Kurpiyer:** ${elGoster([durum.kasa[0]])} + ?`);
-          return interaction.update({ embeds: [e] }).catch(() => {});
+        
+        // Config sil onay modalı
+        if (interaction.isModalSubmit() && interaction.customId.startsWith("config_reject_modal_")) {
+            // ... (config reddetme modalı için)
         }
-
-        // bj_kal_ (stand)
-        while (elToplam(durum.kasa) < 17) durum.kasa.push(durum.deste.pop());
-        const kasaT = elToplam(durum.kasa);
-        const oyuncuT = elToplam(durum.oyuncu);
-        if (kasaT > 21 || kasaT < oyuncuT) { db.add(`para_${interaction.user.id}`, durum.miktar); return bitir("🃏 Blackjack", EN ? `You won! Dealer: ${kasaT}, You: ${oyuncuT}. **+${durum.miktar.toLocaleString()} 💸**` : `Kazandın! Kurpiyer: ${kasaT}, Sen: ${oyuncuT}. **+${durum.miktar.toLocaleString()} 💸**`, "Green"); }
-        if (kasaT === oyuncuT) { return bitir("🃏 Blackjack", EN ? `Push! Both ${oyuncuT}. Money returned.` : `Berabere! İkisi de ${oyuncuT}. Para iade.`, "Grey"); }
-        db.subtract(`para_${interaction.user.id}`, durum.miktar); return bitir("🃏 Blackjack", EN ? `Dealer wins (${kasaT}). You lost **${durum.miktar.toLocaleString()} 💸**.` : `Kurpiyer kazandı (${kasaT}). **${durum.miktar.toLocaleString()} 💸** kaybettin.`, "Red");
-      }
     }
-
-// 🤖 AI öğret + ticket butonları
-  if (interaction.isButton() && (interaction.customId.startsWith("ai_learn_") || interaction.customId.startsWith("ai_ticket_"))) {
-    const { learnButonIsle, ticketButonIsle } = require("../ai/handler");
-    if (interaction.customId.startsWith("ai_learn_")) return learnButonIsle(interaction, interaction.client);
-    return ticketButonIsle(interaction, interaction.client);
-  }
-
-  // 🤖 AI hata logundaki "Anlaşıldı" butonu
-  if (interaction.isButton() && interaction.customId === "ai_error_dismiss") {
-    return interaction.update({ content: "✅ Kapatıldı.", embeds: [], components: [] }).catch(() => {});
-  }
-
-  // 🤖 Cevapsız soruya "Cevap Ekle" butonu (30sn)
-  if (interaction.isButton() && interaction.customId.startsWith("ai_cevapekle_")) {
-    const { cevapEkleButonIsle } = require("../ai/handler");
-    return cevapEkleButonIsle(interaction, interaction.client);
-  }
-
-  // 🤖 Sunucu onay butonları (oto_onay_ / oto_red_ — o sunucunun adminleri)
-  if (interaction.isButton() && (interaction.customId.startsWith("oto_onay_") || interaction.customId.startsWith("oto_red_"))) {
-    const { otoOnayButonIsle } = require("../ai/handler");
-    return otoOnayButonIsle(interaction, interaction.client);
-  }
-
-  // 🤖 Owner AI butonları (kaydet/sil/öğret)
-  if (interaction.isButton()) {
-    const { ownerButonIsle } = require("../ai/handler");
-    const handled = await ownerButonIsle(interaction, interaction.client);
-    if (handled) return;
-  }
-
-  // Modal submit (ileride ticket sebep modalı için hazır)
-  if (interaction.isModalSubmit() && interaction.customId === "ticket_sebep") {
-      const sebep = interaction.fields.getTextInputValue("sebep") || "destek";
-      const { acBilet } = require("../komutlar/ticket");
-      const lang = await getLang(interaction.user.id);
-      await interaction.deferReply({ ephemeral: true }).catch(() => {});
-      const kanal = await acBilet(interaction.client, interaction.guild, interaction.user, sebep.slice(0, 60), lang, null);
-      if (kanal) return interaction.editReply({ content: `Biletin açıldı: ${kanal}` }).catch(() => {});
-      return interaction.editReply({ content: t(lang, "ortak.hata") }).catch(() => {});
-    }
-
-  // AI ticket sebep modalı (ayarlanan kategoriye ticket)
-  if (interaction.isModalSubmit() && interaction.customId.startsWith("ai_ticketsebep_")) {
-    const { ticketSebepModalIsle } = require("../ai/handler");
-    const handled = await ticketSebepModalIsle(interaction, interaction.client);
-    if (handled) return;
-  }
-
-  // Owner AI öğret modal handler
-  if (interaction.isModalSubmit()) {
-    const { ownerModalIsle } = require("../ai/handler");
-    return ownerModalIsle(interaction, interaction.client);
-  }
-  } catch (e) {
-    console.error("Interaction hatası:", e.message);
-    try { if (!interaction.replied) await interaction.reply({ content: "Hata oluştu.", ephemeral: true }); } catch {}
-  }
 };
