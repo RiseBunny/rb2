@@ -425,6 +425,106 @@ app.post("/api/coupon/redeem", _botAuth, express.json(), async (req, res) => {
 
 console.log("[Mağaza] :/api/user/:id + /api/shop hazır" + (BOT_API_SECRET ? "" : " (BOT_API_SECRET yok → kapalı)"));
 
+/* ── Vape Config paylaşımı: onaylı config listesi + indirme ────────────────
+   Vape istemcisi bu uçlardan onaylanmış configleri çeker/indirir. */
+app.get("/api/configs", _botAuth, (req, res) => {
+  try {
+    const liste = db.get("configler") || [];
+    const onayli = (Array.isArray(liste) ? liste : []).filter(c => c && c.durum === "kabul");
+    res.json({
+      count: onayli.length,
+      configs: onayli.map(c => ({
+        id: c.id, ad: c.ad, boyut: c.boyut, at: c.at,
+        paylasan: c.username || "?", discordId: c.discordId
+      }))
+    });
+  } catch { res.status(500).json({ error: "hata" }); }
+});
+
+/* Vape istemcisi (RisebunnyApi.java) uyumlu uç: kullanıcının onaylı configleri.
+   GET /api/config/<discordId>?durum=approved  → { configs:[{id,name,description,status,data}] }
+   Durum belirtilmezse <id> bir config kimliği olarak yorumlanır (dosya indirme). */
+app.get("/api/config/:id", async (req, res) => {
+  try {
+    const hedef = String(req.params.id || "");
+    const liste = Array.isArray(db.get("configler")) ? db.get("configler") : [];
+    if (String(req.query.durum || "").toLowerCase() === "approved") {
+      const kullanici = hedef.replace(/\D/g, "");
+      const configs = liste
+        .filter(c => c && c.durum === "kabul" && String(c.discordId) === kullanici)
+        .map(c => ({ id: c.id, name: c.ad, description: c.not || "", status: c.durum, data: c.icerik }));
+      return res.json({ ok: true, discordId: kullanici, count: configs.length, configs });
+    }
+    const cfg = liste.find(c => c && (String(c.id) === hedef || String(c.id).endsWith(hedef)));
+    if (!cfg) return res.status(404).json({ error: "bulunamadı" });
+    if (cfg.durum !== "kabul") return res.status(403).json({ error: "onaylanmamış" });
+    cfg.indirme = (cfg.indirme || 0) + 1;
+    try { db.set("configler", liste); } catch {}
+    res.json({ ok: true, id: cfg.id, ad: cfg.ad, icerik: cfg.icerik, boyut: cfg.boyut });
+  } catch { res.status(500).json({ error: "hata" }); }
+});
+
+/* ── Vape istemcisi uyumlu uçlar (RisebunnyApi.java) ──────────────────────
+   Vape istemcisi x-bot-secret gönderemez; bu uçlar salt-okunur veri döner. */
+function _premiumJson(id) {
+  const prem = Number(db.fetch(`premium_${id}`) || 0);
+  const aktif = U.isPremium(id);
+  return { premium: !!aktif, daysLeft: aktif && prem > Date.now() ? Math.ceil((prem - Date.now()) / 86400000) : 0 };
+}
+app.get("/api/dogrula/:id", async (req, res) => {
+  try {
+    const id = String(req.params.id || "").replace(/\D/g, "").slice(0, 20);
+    if (!id) return res.status(400).json({ error: "geçersiz id" });
+    let username = client.users.cache.get(id)?.username || null;
+    let avatar = client.users.cache.get(id)?.displayAvatarURL?.({ extension: "png" }) || null;
+    if (!username) {
+      const u = await client.users.fetch(id).catch(() => null);
+      username = u?.username || null;
+      avatar = u?.displayAvatarURL?.({ extension: "png" }) || null;
+    }
+    res.json({
+      discordId: id, username, avatar,
+      role: db.fetch(`siterol_${id}`) || "member",
+      ...(_premiumJson(id)),
+      verifiedAt: Date.now()
+    });
+  } catch { res.status(500).json({ error: "hata" }); }
+});
+app.get("/api/kullanici/:id", async (req, res) => {
+  try {
+    const id = String(req.params.id || "").replace(/\D/g, "").slice(0, 20);
+    if (!id) return res.status(400).json({ error: "geçersiz id" });
+    const wallet = Number(db.fetch(`para_${id}`) || 0);
+    const bank = Number(db.fetch(`bankapara_${id}`) || 0);
+    const xp = Number(db.fetch(`xp_${id}`) || 0);
+    let username = client.users.cache.get(id)?.username || null;
+    if (!username) username = (await client.users.fetch(id).catch(() => null))?.username || null;
+    res.json({
+      id, username, wallet, bank, total: wallet + bank, xp, level: U.xpSeviye(xp),
+      premium: _premiumJson(id).premium, daysLeft: _premiumJson(id).daysLeft,
+      pets: db.fetch(`pets_${id}`) || [], capes: db.fetch(`launcher_capes_${id}`) || []
+    });
+  } catch { res.status(500).json({ error: "hata" }); }
+});
+app.post("/api/iletisim", express.json(), async (req, res) => {
+  try {
+    const discordId = String(req.body?.discordId || "").replace(/\D/g, "").slice(0, 25);
+    const username = String(req.body?.username || "").slice(0, 60);
+    const message = String(req.body?.message || "").slice(0, 2000);
+    const subject = String(req.body?.subject || "Vape istemcisi destek").slice(0, 120);
+    if (!message || message.length < 3) return res.status(400).json({ error: "eksik alan" });
+    const iletisim = require("./util/iletisim");
+    const rec = iletisim.iletisimKaydet({ discordId, username, subject, message, lang: "tr" });
+    let kanal = client.channels.cache.get(U.OWNER_LOG);
+    if (!kanal) kanal = await client.channels.fetch(U.OWNER_LOG).catch(() => null);
+    if (kanal) {
+      const gonderilen = await kanal.send({ embeds: [iletisim.iletisimEmbed(rec)], components: [iletisim.iletisimButon(rec, "tr")] }).catch(() => null);
+      if (gonderilen) { rec.logChannelId = kanal.id; rec.logMessageId = gonderilen.id; iletisim.iletisimGuncelle(rec); }
+    }
+    res.json({ ok: true });
+  } catch { res.status(500).json({ error: "hata" }); }
+});
+
 app.post("/api/contact", _botAuth, express.json(), async (req, res) => {
   try {
     const discordId = String(req.body?.discordId || "").replace(/\D/g, "").slice(0, 25);
@@ -440,12 +540,20 @@ app.post("/api/contact", _botAuth, express.json(), async (req, res) => {
     if (discordId) {
       try { mesajId = await U.siteMesajKaydet({ discordId, username, subject, message, lang }); } catch {}
     }
-    U.ownerLog(client, new Discord.EmbedBuilder().setColor("Blue").setTitle("✉️ Site İletişim Formu")
-      .addFields(
-        { name: "Discord", value: discordId ? `<@${discordId}> (\`${discordId}\`)` : `${username}`, inline: true },
-        { name: "Konu", value: subject || "-", inline: false },
-        { name: "Mesaj", value: message.slice(0, 1000) || "-", inline: false }
-      ).setTimestamp()).catch(() => {});
+    // Sahip loguna cevaplanabilir mesaj olarak düş (Cevapla butonu → modal → DM)
+    try {
+      const iletisim = require("./util/iletisim");
+      const rec = iletisim.iletisimKaydet({ discordId, username, subject, message, lang });
+      let kanal = client.channels.cache.get(U.OWNER_LOG);
+      if (!kanal) kanal = await client.channels.fetch(U.OWNER_LOG).catch(() => null);
+      if (kanal) {
+        const gonderilen = await kanal.send({
+          embeds: [iletisim.iletisimEmbed(rec)],
+          components: [iletisim.iletisimButon(rec, lang)]
+        }).catch(() => null);
+        if (gonderilen) { rec.logChannelId = kanal.id; rec.logMessageId = gonderilen.id; iletisim.iletisimGuncelle(rec); }
+      }
+    } catch (e) { console.log("[İletişim] log hatası:", e.message); }
     res.json({ ok: true, id: mesajId || undefined });
   } catch { res.status(500).json({ error: "hata" }); }
 });
@@ -635,92 +743,6 @@ app.post("/api/login", _botAuth, express.json(), async (req, res) => {
     });
     res.json({ ok: true, bildirildi: ok });
   } catch { res.status(500).json({ error: "hata" }); }
-});
-
-app.post("/api/contact", _botAuth, express.json(), async (req, res) => {
-  try {
-    const { discordId, username, subject, message, lang } = req.body;
-    if (!discordId || !subject || !message) return res.status(400).json({ error: "eksik alan" });
-    
-    const contactId = U.randomId(10);
-    const now = Date.now();
-    
-    // Firestore'a kaydet
-const FB_PROJE = process.env.FIREBASE_PROJECT_ID || "gen-lang-client-0590499912";
-const FB_ANAHTAR = process.env.FIREBASE_API_KEY;
-    const msgDocUrl = `https://firestore.googleapis.com/v1/projects/${FB_PROJE}/databases/(default)/documents/messages/${contactId}?key=${FB_ANAHTAR}`;
-    
-    await fetch(msgDocUrl, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fields: {
-        name: { stringValue: String(username || "Discord Üyesi").slice(0, 60) },
-        email: { stringValue: `d${String(discordId).replace(/\D/g, "")}@discord.risebunny.local` },
-        subject: { stringValue: String(subject || "").slice(0, 120) },
-        message: { stringValue: String(message || "").slice(0, 2000) },
-        lang: { stringValue: lang === "en" ? "en" : "tr" },
-        createdAt: { integerValue: String(Date.now()) },
-        discordId: { stringValue: String(discordId).replace(/\D/g, "") },
-        discordName: { stringValue: String(username || "").slice(0, 60) },
-        status: { stringValue: "unread" }
-      }})
-    });
-    
-    // Sahip loguna embed gönder
-    const ownerLogChannel = client.channels.cache.get(U.OWNER_LOG);
-    if (ownerLogChannel) {
-      const embed = new Discord.EmbedBuilder()
-        .setColor("Blurple")
-        .setTitle("📬 Yeni İletişim Mesajı")
-        .addFields(
-          { name: "ID", value: `#${contactId}`, inline: true },
-          { name: "Kullanıcı", value: `<@${discordId}>\n\`${discordId}\``, inline: true },
-          { name: "Kullanıcı adı", value: username || "—", inline: true },
-          { name: "Konu", value: subject.slice(0, 100) },
-          { name: "Mesaj", value: message.slice(0, 1000) }
-        )
-        .setTimestamp();
-      
-      const row = new Discord.ActionRowBuilder().addComponents(
-        new Discord.ButtonBuilder().setCustomId(`contact_reply_${contactId}`).setLabel("Cevap Ver").setStyle(Discord.ButtonStyle.Primary).setEmoji("💬")
-      );
-      
-      await ownerLogChannel.send({ embeds: [embed], components: [row] });
-    }
-    
-    res.json({ ok: true, id: contactId });
-  } catch (e) { console.error("[contact] hata:", e.message); res.status(500).json({ error: "hata" }); }
-});
-
-// Config bildirimi endpoint'i (launcher config yüklerken)
-app.post("/api/config/notify", _botAuth, express.json(), async (req, res) => {
-  try {
-    const { discordId, username, configId, name } = req.body;
-    if (!discordId || !configId || !name) return res.status(400).json({ error: "eksik alan" });
-    
-    const ownerLogChannel = client.channels.cache.get(U.OWNER_LOG);
-    if (ownerLogChannel) {
-      const embed = new Discord.EmbedBuilder()
-        .setColor("Yellow")
-        .setTitle("📤 Yeni Config Yüklendi")
-        .addFields(
-          { name: "Yükleyen", value: `<@${discordId}> (${username})`, inline: true },
-          { name: "Config ID", value: `\`${configId}\``, inline: true },
-          { name: "Config Adı", value: name, inline: true }
-        )
-        .setTimestamp();
-      
-      const row = new Discord.ActionRowBuilder().addComponents(
-        new Discord.ButtonBuilder().setCustomId(`config_accept_${configId}`).setLabel("Kabul Et").setStyle(Discord.ButtonStyle.Success).setEmoji("✅"),
-        new Discord.ButtonBuilder().setCustomId(`config_reject_${configId}`).setLabel("Reddet").setStyle(Discord.ButtonStyle.Danger).setEmoji("❌")
-      );
-      
-      const sent = await ownerLogChannel.send({ embeds: [embed], components: [row] });
-      // Log mesajı ID'sini sakla
-      require("croxydb").set(`configLog_${configId}`, { channelId: ownerLogChannel.id, messageId: sent.id });
-    }
-    res.json({ ok: true });
-  } catch (e) { console.error("[config/notify] hata:", e.message); res.status(500).json({ error: "hata" }); }
 });
 
 const TOPGG_BOT_ID = process.env.TOPGG_BOT_ID || "1540401487581020252";

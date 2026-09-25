@@ -108,7 +108,7 @@ function modCikar(userId) {
 }
 // Modların çalıştırabildiği normalde-sahip komutları
 function modMuafKomut(muafAd) {
-  return ["karaliste", "beyazliste", "kupon", "bakım"].includes(String(muafAd || "").toLowerCase());
+  return ["karaliste", "beyazliste", "kupon", "bakım", "config"].includes(String(muafAd || "").toLowerCase());
 }
 function modYetkiliMi(userId) {
   return isMod(userId);
