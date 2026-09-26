@@ -74,22 +74,37 @@ module.exports = async message => {
   let canonical = komutCoz(client, command);
 
   // Fuzzy matching: yanlis yazilmis komut icin onerme
+  // (kullanicinin dilinde: EN ise Ingilizce ad, TR ise Turkce ad gosterilir;
+  //  bulunamayan metin her zaman cevaba eklenir: "cant find X" / "X diye komut yok")
   if (!canonical) {
-    const suggestion = findClosestCommand(command, client, 55);
+    const lang = await getLang(message.author.id);
+    const { KOMUTLAR } = require("../dil/komutlar");
+    // "r!create server" gibi bosluklu yazimlarda ilk parametre de komutun parcasi olabilir
+    const fullTyped = parts.slice(0, 2).join(" ").slice(prefix.length).trim().slice(0, 60) || command;
+    const dashed = params.length ? `${command}-${params[0]}`.toLowerCase() : null;
+    const spaced = params.length ? `${command} ${params[0]}`.toLowerCase() : null;
+    let suggestion = findClosestCommand(command, client, 55);
+    if (!suggestion && dashed) {
+      suggestion = findClosestCommand(dashed, client, 55)
+        || (spaced ? findClosestCommand(spaced, client, 55) : null);
+    }
+    const displayOf = (canon) => {
+      const cmd = client.commands.get(canon);
+      if (lang === "en") return (KOMUTLAR[canon]?.en || cmd?.help?.name || canon);
+      return (cmd?.help?.name || canon);
+    };
     if (suggestion) {
-      const lang = await getLang(message.author.id);
-      const cmd = client.commands.get(suggestion.canonical);
-      // Kullanıcının dili İngilizse komutun İngilizce adını (KOMUTLAR[canonical].en) göster
-      const { KOMUTLAR } = require("../dil/komutlar");
-      const displayName = lang === "en"
-        ? (KOMUTLAR[suggestion.canonical]?.en || suggestion.canonical)
-        : (cmd?.help?.name || suggestion.canonical);
+      const displayName = displayOf(suggestion.canonical);
       const suggestionMsg = lang === "en"
-        ? `Command not found. Did you mean \`${displayName}\`?`
-        : `Böyle bir komut yok. \`${displayName}\` mu demek istediniz?`;
+        ? `❌ Can't find \`r!${fullTyped}\`. Did you mean \`r!${displayName}\`?`
+        : `❌ \`r!${fullTyped}\` diye bir komut yok. \`r!${displayName}\` mu demek istediniz?`;
       return message.reply({ content: suggestionMsg, allowedMentions: { repliedUser: false } }).catch(() => {});
     }
-    return;
+    // Hic benzer komut yoksa sessiz kalma — bulunamayan komutu dille bildir
+    const notFoundMsg = lang === "en"
+      ? `❌ Can't find \`r!${fullTyped}\`. Type \`${prefix}help\` for the command list.`
+      : `❌ \`r!${fullTyped}\` diye bir komut yok. Komutlar için \`${prefix}yardım\` yaz.`;
+    return message.reply({ content: notFoundMsg, allowedMentions: { repliedUser: false } }).catch(() => {});
   }
   const cmd = client.commands.get(canonical);
   if (!cmd) return;

@@ -452,7 +452,15 @@ app.get("/api/config/:id", async (req, res) => {
       const kullanici = hedef.replace(/\D/g, "");
       const configs = liste
         .filter(c => c && c.durum === "kabul" && String(c.discordId) === kullanici)
-        .map(c => ({ id: c.id, name: c.ad, description: c.not || "", status: c.durum, data: c.icerik }));
+        .map(c => ({
+          /* RisebunnyConfigEntry: id (long), name, description, status("approved"), data(base64).
+             id'yi sayısal string olarak gönderiyoruz; Gson getAsLong() tam parsesin. */
+          id: String(c.id),
+          name: c.ad,
+          description: c.not || "",
+          status: "approved",
+          data: c.icerik
+        }));
       return res.json({ ok: true, discordId: kullanici, count: configs.length, configs });
     }
     const cfg = liste.find(c => c && (String(c.id) === hedef || String(c.id).endsWith(hedef)));

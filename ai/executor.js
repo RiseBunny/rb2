@@ -53,16 +53,25 @@ function komutKatalogu() {
 }
 
 // Bilgi-vs-eylem ayrımı: bu kelimeler varsa yerel KB atlanır, tool yoluna gidilir
+// NOT: İngilizce varyantlar da olmalı, yoksa "rise setup server" gibi
+// istekler eylem olarak algılanmaz ve AI komut çalıştıramaz.
 const EYLEM_KELIMELERI = [
   "banla", "yasakla", "ban", "kick", "kickle", " at ", "atin", "kov",
   "mute", "sustur", "susturma", "timeout", "unmute",
   "uyar", "warn", "sil", "temizle", "clear", "purge",
   "rol ver", "rol al", "rolver", "rolal", "rolekle", "rolçıkar",
+  "give role", "remove role", "take role",
   "para gönder", "para ver", "gönder", "transfer", "çal", "soygun",
+  "send money", "give money", "steal", "rob", "heist",
   "koruma aç", "koruma kapat", "küfürengel", "reklamengel", "spam",
+  "protection on", "protection off", "swear filter", "ad filter",
   "çekiliş başlat", "çekiliş", "giveaway", "başlat", "sonlandır", "reroll",
-  "ticket aç", "ticket", "bilet aç", "sunucukur", "sunucu kur", "setup",
-  "kayıt", "kaydet", "erkek", "kız ", "mute at", "uyarı ver",
+  "giveaway start", "giveaway end", "start giveaway",
+  "ticket aç", "ticket", "bilet aç", "open ticket",
+  "sunucukur", "sunucu kur", "setup", "setup server", "setup-server",
+  "server setup", "set up", "create server", "create-server",
+  "sunucu-kur",
+  "kayıt", "kaydet", "erkek", "kız ", "register", "mute at", "uyarı ver",
   "oylama", "poll", "anket", "hatırlat", "remind", "afk",
 ];
 
@@ -205,6 +214,16 @@ async function komutYonlendir(client, message, secim) {
     if (canonical && (SAHIP_KOMUTLARI.has(canonical) || AI_BLOKLISTE.has(canonical) || KOMUTLAR[canonical]?.kat === "sahip"))
       return { eleAlindi: true, cevap: EN ? "❌ I can't run that command." : "❌ Bu komutu çalıştıramam." };
     return { eleAlindi: false };
+  }
+  // Yıkıcı komut AI ile doğrudan ÇALIŞTIRILMAZ — sadece yönerge verilir.
+  // ("rise sunucukur" yazınca sunucunun silinip kurulmasını engeller.)
+  if (canonical === "sunucukur") {
+    return {
+      eleAlindi: true,
+      cevap: EN
+        ? "🏗️ To set up the server, run `r!setup-server` yourself (I can't run destructive setup for you)."
+        : "🏗️ Sunucu kurulumu için `r!sunucukur` komutunu kendin yazmalısın (yıkıcı kurulumu senin yerine çalıştıramam).",
+    };
   }
   const cmd = client.commands?.get(canonical);
   if (!cmd || cmd.conf?.enabled === false) return { eleAlindi: false };
@@ -448,8 +467,8 @@ function toolPrompt(lang) {
     ? `{"tool":"komut_calistir","komut":"para-sıralama","args":"","hedef":"","rol":"","kanal":""}`
     : `{"tool":"komut_calistir","komut":"mute","args":"10m spam","hedef":"Ahmet","rol":"","kanal":""}`;
   return lang === "en"
-    ? `You are a command parser for a Discord bot. User request below. Reply with ONLY a JSON object, no other text.\nFAST tools (prefer these when they fit):\n${hizli}\n\nALL other commands (pick "komut" from this catalog, tr-name or en-name):\n${katalog}\n\nFormat A (fast): {"tool":"<fast-name>","params":{"kullanici":"...","sebep":"...","sure":"10m","adet":10,"rol":"...","durum":"on/off"}}\nFormat B (any catalog command): {"tool":"komut_calistir","komut":"<catalog name>","args":"<args as user would type>","hedef":"<user>","rol":"<role>","kanal":"<channel>"}\nExample B: ${ornek}\nRules: if the request is NOT an action (question/chat), use {"tool":"none"}. Owner commands (eval, bakım, veri, yedek, kupon, karaliste, siterol, unbanall) DON'T exist — never pick them. Extract usernames/mentions as-is into kullanici/hedef. Durations like "7 days/10m/1h" go into sure or args.`
-    : `Bir Discord botu için komut ayrıştırıcısın. Aşağıdaki kullanıcı isteğine SADECE JSON objesiyle cevap ver, başka metin yazma.\nHIZLI araçlar (uyuyorsa bunları tercih et):\n${hizli}\n\nDİĞER tüm komutlar (katalogdan "komut" seç, tr veya en adıyla):\n${katalog}\n\nFormat A (hızlı): {"tool":"<hizli-ad>","params":{"kullanici":"...","sebep":"...","sure":"10m","adet":10,"rol":"...","durum":"aç/kapat"}}\nFormat B (katalogdaki herhangi bir komut): {"tool":"komut_calistir","komut":"<katalog adı>","args":"<kullanıcının yazacağı argümanlar>","hedef":"<kullanıcı>","rol":"<rol>","kanal":"<kanal>"}\nÖrnek B: ${ornek}\nKurallar: istek eylem DEĞİLSE (soru/sohbet) {"tool":"none"} dön. Sahip komutları (eval, bakım, veri, yedek, kupon, karaliste, siterol, unbanall) YOK — asla seçme. Kullanıcı adlarını/etikeleri aynen kullanici/hedef'e yaz. "7 gün/10dk/1h" gibi süreleri sure veya args'e yaz.`;
+    ? `You are a command parser for a Discord bot. User request below. Reply with ONLY a JSON object, no other text.\nFAST tools (prefer these when they fit):\n${hizli}\n\nALL other commands (pick "komut" from this catalog, tr-name or en-name):\n${katalog}\n\nFormat A (fast): {"tool":"<fast-name>","params":{"kullanici":"...","sebep":"...","sure":"10m","adet":10,"rol":"...","durum":"on/off"}}\nFormat B (any catalog command): {"tool":"komut_calistir","komut":"<catalog name>","args":"<args as user would type>","hedef":"<user>","rol":"<role>","kanal":"<channel>"}\nExample B: ${ornek}\nRules: if the request is NOT an action (question/chat), use {"tool":"none"}. Owner commands (eval, bakım, veri, yedek, kupon, karaliste, siterol, unbanall) DON'T exist — never pick them. DESTRUCTIVE setup (sunucukur/setup-server/setup) must NEVER be picked with komut_calistir — use {"tool":"sunucu_kur","params":{}} instead. Extract usernames/mentions as-is into kullanici/hedef. Durations like "7 days/10m/1h" go into sure or args.`
+    : `Bir Discord botu için komut ayrıştırıcısın. Aşağıdaki kullanıcı isteğine SADECE JSON objesiyle cevap ver, başka metin yazma.\nHIZLI araçlar (uyuyorsa bunları tercih et):\n${hizli}\n\nDİĞER tüm komutlar (katalogdan "komut" seç, tr veya en adıyla):\n${katalog}\n\nFormat A (hızlı): {"tool":"<hizli-ad>","params":{"kullanici":"...","sebep":"...","sure":"10m","adet":10,"rol":"...","durum":"aç/kapat"}}\nFormat B (katalogdaki herhangi bir komut): {"tool":"komut_calistir","komut":"<katalog adı>","args":"<kullanıcının yazacağı argümanlar>","hedef":"<kullanıcı>","rol":"<rol>","kanal":"<kanal>"}\nÖrnek B: ${ornek}\nKurallar: istek eylem DEĞİLSE (soru/sohbet) {"tool":"none"} dön. Sahip komutları (eval, bakım, veri, yedek, kupon, karaliste, siterol, unbanall) YOK — asla seçme. YIKICI kurulum (sunucukur/setup-server/setup) komut_calistir ile ASLA seçilmez — yerine {"tool":"sunucu_kur","params":{}} dön. Kullanıcı adlarını/etikeleri aynen kullanici/hedef'e yaz. "7 gün/10dk/1h" gibi süreleri sure veya args'e yaz.`;
 }
 
 function jsonCikar(metin) {
