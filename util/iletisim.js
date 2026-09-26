@@ -5,7 +5,7 @@
  * Yetkili (sahip / 2. yetkili / mod) butona basar, modal açar, yanıtı yazar;
  * yanıt kullanıcıya DM olarak gider ve log mesajı "DM gönderildi / hata" ile güncellenir.
  */
-const { EmbedBuilder, ActionRowBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } = require("discord.js");
+const { EmbedBuilder, ActionRowBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ButtonBuilder, ButtonStyle } = require("discord.js");
 const db = require("croxydb");
 const { getLangSync, getLang } = require("../dil");
 const { SAHIP_ID, OWNER_LOG, ownerLog } = require("../utils");
@@ -58,10 +58,10 @@ exports.iletisimEmbed = function (rec) {
 
 exports.iletisimButon = function (rec, lang) {
   const row = new ActionRowBuilder().addComponents(
-    new require("discord.js").ButtonBuilder()
+    new ButtonBuilder()
       .setCustomId(`iletisim_cevapla_${rec.id}`)
       .setLabel(metin(lang, "Cevapla", "Reply"))
-      .setStyle(require("discord.js").ButtonStyle.Primary)
+      .setStyle(ButtonStyle.Primary)
       .setEmoji("↩️")
   );
   return row;
