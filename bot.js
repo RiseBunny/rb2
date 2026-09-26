@@ -549,6 +549,7 @@ app.post("/api/contact", _botAuth, express.json(), async (req, res) => {
       try { mesajId = await U.siteMesajKaydet({ discordId, username, subject, message, lang }); } catch {}
     }
     // Sahip loguna cevaplanabilir mesaj olarak düş (Cevapla butonu → modal → DM)
+    let logSonuc = { ok: false, neden: "" };
     try {
       const iletisim = require("./util/iletisim");
       const rec = iletisim.iletisimKaydet({ discordId, username, subject, message, lang });
@@ -559,10 +560,13 @@ app.post("/api/contact", _botAuth, express.json(), async (req, res) => {
           embeds: [iletisim.iletisimEmbed(rec)],
           components: [iletisim.iletisimButon(rec, lang)]
         }).catch(() => null);
-        if (gonderilen) { rec.logChannelId = kanal.id; rec.logMessageId = gonderilen.id; iletisim.iletisimGuncelle(rec); }
+        if (gonderilen) { rec.logChannelId = kanal.id; rec.logMessageId = gonderilen.id; iletisim.iletisimGuncelle(rec); logSonuc.ok = true; }
       }
-    } catch (e) { console.log("[İletişim] log hatası:", e.message); }
-    res.json({ ok: true, id: mesajId || undefined });
+      if (!kanal) logSonuc.neden = "kanal-yok";
+      else if (!logSonuc.ok) logSonuc.neden = "gonderim-basarisiz";
+    } catch (e) { logSonuc.neden = "hata: " + (e && e.message); console.log("[İletişim] log hatası:", e && e.message); }
+    if (!logSonuc.ok) console.warn(`[İletişim] UYARI: mesaj sahip loguna düşemedi (${logSonuc.neden || "bilinmeyen"}) — OWNER_LOG kanalını ve bot izinlerini kontrol et.`);
+    res.json({ ok: true, id: mesajId || undefined, log: logSonuc.ok ? "sent" : ("failed: " + (logSonuc.neden || "bilinmeyen")) });
   } catch { res.status(500).json({ error: "hata" }); }
 });
 app.post("/api/notify", _botAuth, express.json(), async (req, res) => {
